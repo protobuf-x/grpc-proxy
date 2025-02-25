@@ -32,13 +32,76 @@ See the examples directory for sample implementations showing how to:
 - Configure the proxy using Spring Cloud Gateway
 - Define routing rules for JSON/gRPC translation
 
-## Requirements
+## Dependencies
 
-- Java 11+
-- Spring Boot 2.2.13
-- Spring Cloud Hoxton.SR12
-- gRPC 1.37.0
+### Reflection Extension
+```groovy
+implementation 'io.github.protobuf-x:reflection-extension:${project.version}'
+```
+
+### Spring Cloud Gateway Extension
+```groovy
+implementation 'io.github.protobuf-x:spring-cloud-gateway:${project.version}'
+```
+
+### Requirements for Using Reflection Extension
+- Your gRPC server must have reflection service enabled
+- Server must be accessible from the proxy
+- Protocol buffers must be properly configured in your project
+
+### Requirements for Using Spring Cloud Gateway
+- Spring Cloud Gateway dependencies must be properly configured
+- Your application must be configured as a Spring Boot application
+
+## Configuration
+
+### Enabling gRPC Reflection in Your Server
+```java
+Server server = ServerBuilder.forPort(9090)
+    .addService(new YourServiceImpl())
+    .addService(ProtoReflectionService.newInstance()) // Add this line
+    .build();
+```
+
+### Basic Spring Cloud Gateway Configuration
+
+You can configure the gateway either through Java configuration or YAML configuration.
+
+#### Java Configuration
+```java
+@SpringBootApplication
+public class ExampleGateway {
+    @Bean
+    RouteLocator routeLocator(RouteLocatorBuilder builder, GatewayFilter httpRuleJsonToGrpcGatewayFilter) {
+        return builder.routes()
+                .route("json-to-grpc", r -> r
+                        .path("/example.echo.v1.EchoService/**")
+                        .filters(f -> f.filter(httpRuleJsonToGrpcGatewayFilter))
+                        .uri("http://localhost:6565")
+                ).build();
+    }
+
+    @Bean
+    GatewayFilter httpRuleJsonToGrpcGatewayFilter(ChannelRepository channelRepository,
+                                                  ProtobufRepository protobufRepository) {
+        return new HttpRuleJsonToGrpcGatewayFilterFactory(channelRepository, protobufRepository)
+                .apply(new HttpRuleJsonToGrpcGatewayFilterFactory.Config());
+    }
+
+    @Bean
+    ProtobufRepository protoRepository(ChannelRepository channelRepository) {
+        return new CacheableServerProtobufRepository(channelRepository, 60);
+    }
+
+    @Bean
+    ChannelRepository channelRepository() {
+        return new InmemoryChannelRepository();
+    }
+}
+```
+
+For more detailed configuration examples, please refer to the examples directory.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE)
+This project is licensed under the MIT License
