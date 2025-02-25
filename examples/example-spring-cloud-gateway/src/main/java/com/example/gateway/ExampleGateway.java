@@ -5,6 +5,7 @@ import io.github.protobufx.spring.gateway.grpc.filter.datasource.CacheableServer
 import io.github.protobufx.spring.gateway.grpc.filter.datasource.InmemoryChannelRepository;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
@@ -16,26 +17,29 @@ public class ExampleGateway {
     }
 
     @Bean
-    RouteLocator routeLocator(RouteLocatorBuilder builder,
-                              ChannelRepository channelRepository,
-                              ProtobufRepository protobufRepository) {
-        var filter = new HttpRuleJsonToGrpcGatewayFilterFactory(channelRepository, protobufRepository)
-                .apply(new HttpRuleJsonToGrpcGatewayFilterFactory.Config());
+    RouteLocator routeLocator(RouteLocatorBuilder builder, GatewayFilter httpRuleJsonToGrpcGatewayFilter) {
         return builder.routes()
                 .route("json-to-grpc", r -> r
                         .path("/example.echo.v1.EchoService/**")
-                        .filters(f -> f.filter(filter))
+                        .filters(f -> f.filter(httpRuleJsonToGrpcGatewayFilter))
                         .uri("http://localhost:6565")
                 ).build();
     }
 
     @Bean
-    ChannelRepository channelRepository() {
-        return new InmemoryChannelRepository();
+    GatewayFilter httpRuleJsonToGrpcGatewayFilter(ChannelRepository channelRepository,
+                                                  ProtobufRepository protobufRepository) {
+        return new HttpRuleJsonToGrpcGatewayFilterFactory(channelRepository, protobufRepository)
+                .apply(new HttpRuleJsonToGrpcGatewayFilterFactory.Config());
     }
 
     @Bean
     ProtobufRepository protoRepository(ChannelRepository channelRepository) {
         return new CacheableServerProtobufRepository(channelRepository, 60);
+    }
+
+    @Bean
+    ChannelRepository channelRepository() {
+        return new InmemoryChannelRepository();
     }
 }
