@@ -1,0 +1,177 @@
+syntax = "proto3";
+
+package example.echo.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/duration.proto";
+import "google/api/annotations.proto";
+import "google/type/date.proto";
+
+option java_multiple_files = true;
+option java_package = "com.example.echo.v1";
+
+service EchoService {
+
+  rpc CreateEcho(CreateEchoRequest) returns (Echo) {
+    option (google.api.http) = {
+      post: "/example.echo.v1.EchoService/CreateEcho"
+      body: "*"
+      additional_bindings {
+        post: "/echo"
+        body: "*"
+      }
+    };
+  };
+
+  rpc CreateSound(CreateSoundRequest) returns (Sound) {
+    option (google.api.http) = {
+      post: "/example.echo.v1.EchoService/CreateSound"
+      body: "*"
+      additional_bindings {
+        post: "/sounds"
+        body: "*"
+      }
+    };
+  };
+
+  rpc UpdateSound(UpdateSoundRequest) returns (Sound) {
+    option (google.api.http) = {
+      post: "/example.echo.v1.EchoService/UpdateSound"
+      body: "*"
+      additional_bindings {
+        patch: "/sounds/{sound.sound_id}"
+        body: "sound"
+      }
+    };
+  };
+
+  rpc GetSound(GetSoundRequest) returns (Sound) {
+    option (google.api.http) = {
+      post: "/example.echo.v1.EchoService/GetSound"
+      body: "*"
+      additional_bindings {
+        get: "/sounds/{sound_id}"
+      }
+    };
+  };
+
+  rpc ListSound(ListSoundRequest) returns (ListSoundResponse) {
+    option (google.api.http) = {
+      post: "/example.echo.v1.EchoService/ListSound"
+      body: "*"
+      additional_bindings {
+        get: "/sounds"
+      }
+    };
+  };
+
+  rpc PlaySound(PlaySoundRequest) returns (PlaySoundResponse) {
+    option (google.api.http) = {
+      post: "/sounds/{sound_id}:play"
+      body: "*"
+    };
+  };
+
+
+  rpc GetWave(GetWaveRequest) returns (Wave) {
+    option (google.api.http) = {
+      post: "/example.echo.v1.EchoService/GetWave"
+      body: "*"
+      additional_bindings {
+        get: "/sounds/{sound_id}/waves/{wave_id}"
+      }
+    };
+  };
+
+  rpc GetSoundCustomType(GetSoundCustomTypeRequest) returns (SoundCustomType) {
+    option (google.api.http) = {
+      post: "/example.echo.v1.EchoService/GetSoundCustomType"
+      body: "*"
+      additional_bindings {
+        get: "/soundCustomTypes"
+      }
+      additional_bindings {
+        get: "/soundCustomTypes/{sound_type}/{create_time}/{play_time}/{field_mask}"
+      }
+    };
+  };
+}
+
+message CreateEchoRequest {
+  string message = 1;
+}
+
+message Echo {
+  string message = 1;
+
+}
+
+message GetSoundRequest {
+  string sound_id = 1;
+  repeated string wave_ids = 2;
+  SoundType type = 3;
+}
+
+message Sound {
+  string sound_id = 1;
+  repeated Wave waves = 2;
+  SoundType type = 3;
+}
+
+message ListSoundRequest {
+}
+
+message ListSoundResponse {
+  repeated Sound sounds = 1;
+}
+
+message PlaySoundRequest {
+  string sound_id = 1;
+  string sound_name = 2;
+}
+
+message PlaySoundResponse {
+  string message = 1;
+}
+
+message CreateSoundRequest {
+  Sound sound = 1;
+}
+
+message UpdateSoundRequest {
+  Sound sound = 1;
+}
+
+message GetWaveRequest {
+  string sound_id = 1;
+  string wave_id = 2;
+}
+
+message Wave {
+  string wave_id = 1;
+  string value = 2;
+}
+
+enum SoundType {
+  SOUND_TYPE_UNSPECIFIED = 0;
+  SONG = 1;
+  VOICE = 2;
+  NOISE = 3;
+}
+
+message GetSoundCustomTypeRequest {
+  SoundType sound_type = 1;
+  google.protobuf.FieldMask field_mask = 2;
+  google.protobuf.Timestamp create_time = 3;
+  google.protobuf.Duration play_time = 4;
+  google.type.Date release_date = 5;
+}
+
+message SoundCustomType {
+  SoundType sound_type = 1;
+  google.protobuf.FieldMask field_mask = 2;
+  google.protobuf.Timestamp create_time = 3;
+  google.protobuf.Duration play_time = 4;
+  google.type.Date release_date = 5;
+}
