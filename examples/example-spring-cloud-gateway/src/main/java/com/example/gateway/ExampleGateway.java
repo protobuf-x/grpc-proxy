@@ -1,8 +1,10 @@
 package com.example.gateway;
 
-import io.github.protobufx.spring.gateway.grpc.filter.*;
-import io.github.protobufx.spring.gateway.grpc.filter.datasource.CacheableServerProtobufRepository;
-import io.github.protobufx.spring.gateway.grpc.filter.datasource.InmemoryChannelRepository;
+import com.github.protobufx.spring.gateway.grpc.filter.ChannelRepository;
+import com.github.protobufx.spring.gateway.grpc.filter.HttpRuleJsonToGrpcGatewayFilterFactory;
+import com.github.protobufx.spring.gateway.grpc.filter.ProtobufRepository;
+import com.github.protobufx.spring.gateway.grpc.filter.datasource.CacheableServerProtobufRepository;
+import com.github.protobufx.spring.gateway.grpc.filter.datasource.InmemoryChannelRepository;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.gateway.filter.GatewayFilter;

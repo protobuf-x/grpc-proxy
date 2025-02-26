@@ -22,7 +22,7 @@ buildscript {
 apply plugin: 'java'
 apply plugin: 'idea'
 
-group = 'io.github.protobufx'
+group = 'com.github.protobuf-x'
 version = '0.0.1-SNAPSHOT'
 sourceCompatibility = JavaVersion.VERSION_11
 
@@ -36,6 +36,7 @@ subprojects {
 
     repositories {
         mavenCentral()
+        maven { url "https://jitpack.io" }
     }
 }
 
@@ -44,8 +45,10 @@ def protoBuildOption = System.properties.containsKey("os.name")
         && System.properties.containsKey("os.arch")
         && System.properties.get("os.arch") == "aarch64" ? ':osx-x86_64' : ''
 
-project(':reflection-extension') {
+project(':grpc-proxy-reflection-extension') {
     apply plugin: 'com.google.protobuf'
+    apply plugin: 'maven-publish'
+
     dependencies {
         implementation "javax.annotation:javax.annotation-api:${javaxAnnotationVersion}"
         implementation "io.grpc:grpc-protobuf:${grpcVersion}"
@@ -77,14 +80,35 @@ project(':reflection-extension') {
             }
         }
     }
+
+    java {
+        withSourcesJar()
+        withJavadocJar()
+    }
+
+    tasks.withType(Jar).configureEach {
+        duplicatesStrategy = DuplicatesStrategy.WARN
+    }
+
+    publishing {
+        publications {
+            maven(MavenPublication) {
+                groupId project.group
+                artifactId "${rootProject.name}-${project.name}"
+                version project.version
+                from components.java
+            }
+        }
+    }
 }
 
-project(':spring-cloud-gateway') {
+project(':grpc-proxy-spring-cloud-gateway') {
     apply plugin: 'org.springframework.boot'
     apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'maven-publish'
 
     dependencies {
-        implementation project(':reflection-extension')
+        implementation project(':grpc-proxy-reflection-extension')
         implementation "org.springframework.cloud:spring-cloud-gateway-server"
         implementation "org.springframework:spring-webflux"
         implementation "io.netty:netty-buffer"
@@ -100,16 +124,6 @@ project(':spring-cloud-gateway') {
         testImplementation "io.projectreactor:reactor-test"
     }
 
-    sourceSets {
-        main {
-            java {
-                srcDirs project(':reflection-extension').sourceSets.main.java.srcDirs.findAll {
-                    it.path.contains('generated/source/proto')
-                }
-            }
-        }
-    }
-
     jar {
         enabled = true
     }
@@ -122,11 +136,32 @@ project(':spring-cloud-gateway') {
         useJUnitPlatform()
     }
 
+    java {
+        withSourcesJar()
+        withJavadocJar()
+    }
+
+    tasks.withType(Jar).configureEach {
+        duplicatesStrategy = DuplicatesStrategy.WARN
+    }
+
+    publishing {
+        publications {
+            maven(MavenPublication) {
+                groupId project.group
+                artifactId "${rootProject.name}-${project.name}"
+                version project.version
+                from components.java
+            }
+        }
+    }
+
     dependencyManagement {
         imports {
             mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
         }
     }
+
 }
 
 project(':examples:example-spring-cloud-gateway') {
@@ -134,7 +169,7 @@ project(':examples:example-spring-cloud-gateway') {
     apply plugin: 'io.spring.dependency-management'
 
     dependencies {
-        implementation project(':spring-cloud-gateway')
+        implementation project(':grpc-proxy-spring-cloud-gateway')
         implementation "io.grpc:grpc-protobuf:${grpcVersion}"
         implementation "io.grpc:grpc-netty:${grpcVersion}"
         implementation "io.grpc:grpc-api:${grpcVersion}"
@@ -155,7 +190,7 @@ project(':examples:example-server') {
     apply plugin: 'com.google.protobuf'
 
     dependencies {
-        implementation project(':reflection-extension')
+        implementation project(':grpc-proxy-reflection-extension')
         implementation "io.github.lognet:grpc-spring-boot-starter:${springGrpcVersion}"
     }
 

@@ -1,7 +1,7 @@
 package com.example.server;
 
 import com.example.echo.v1.*;
-import io.github.protobufx.reflection.extension.ReflectionExtensionService;
+import com.github.protobufx.reflection.extension.ReflectionExtensionService;
 import io.grpc.stub.StreamObserver;
 import org.lognet.springboot.grpc.GRpcService;
 import org.springframework.boot.SpringApplication;

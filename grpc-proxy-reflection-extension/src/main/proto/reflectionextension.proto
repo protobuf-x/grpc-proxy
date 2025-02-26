@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package protobux.reflection.extension.v1alpha;
+
+option java_multiple_files = true;
+option java_package = "com.github.protobux.reflection.extension.v1alpha";
+option java_outer_classname = "ReflectionExtensionProto";
+
+service ServerReflectionExtension {
+  rpc ReflectServerDescriptor(ReflectServerDescriptorRequest) returns (stream ReflectServerDescriptorResponse);
+}
+
+message ReflectServerDescriptorRequest {
+}
+
+message ReflectServerDescriptorResponse {
+  bytes file_descriptor_set = 1;
+}
