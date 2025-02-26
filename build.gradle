@@ -95,7 +95,7 @@ project(':grpc-proxy-reflection-extension') {
             maven(MavenPublication) {
                 groupId project.group
                 artifactId "${rootProject.name}-${project.name}"
-                version project.version
+                version rootProject.version
                 from components.java
             }
         }
@@ -150,7 +150,7 @@ project(':grpc-proxy-spring-cloud-gateway') {
             maven(MavenPublication) {
                 groupId project.group
                 artifactId "${rootProject.name}-${project.name}"
-                version project.version
+                version rootProject.version
                 from components.java
             }
         }
