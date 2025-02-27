@@ -94,7 +94,7 @@ project(':reflection-extension') {
         publications {
             maven(MavenPublication) {
                 groupId project.group
-                artifactId "${rootProject.name}-${project.name}"
+                artifactId project.name
                 version rootProject.version
                 from components.java
             }
@@ -149,7 +149,7 @@ project(':spring-cloud-gateway') {
         publications {
             maven(MavenPublication) {
                 groupId project.group
-                artifactId "${rootProject.name}-${project.name}"
+                artifactId project.name
                 version rootProject.version
                 from components.java
             }
