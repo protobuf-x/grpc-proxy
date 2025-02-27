@@ -142,7 +142,7 @@ project(':spring-cloud-gateway') {
     }
 
     tasks.withType(Jar).configureEach {
-        duplicatesStrategy = DuplicatesStrategy.WARN
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
 
     publishing {
