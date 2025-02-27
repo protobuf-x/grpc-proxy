@@ -39,7 +39,11 @@ import java.util.Optional;
 
 import static io.grpc.Metadata.ASCII_STRING_MARSHALLER;
 
-
+/**
+ * A factory class for creating gRPC gateway filters that convert JSON request bodies to gRPC messages.
+ * This filter is used to bridge the gap between HTTP and gRPC communication by converting JSON request bodies
+ * to gRPC messages and sending them to the gRPC server.
+ */
 @AllArgsConstructor
 @Slf4j
 public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilterFactory<HttpRuleJsonToGrpcGatewayFilterFactory.Config> {
@@ -72,15 +76,18 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
         @Nonnull
         public Mono<Void> writeWith(@Nonnull Publisher<? extends DataBuffer> body) {
             exchange.getResponse().getHeaders().set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
-            var routingUri = ((Route) exchange.getAttributes().get(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR))
-                    .getUri();
+            var routingUriAuthority = ((Route) exchange.getAttributes().get(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR))
+                    .getUri()
+                    .getAuthority();
 
             var exchangeRequest = new ExchangeRequest(exchange.getRequest());
-            var routingUriAuthority = routingUri.getAuthority();
-            var methodDescriptor = protobufRepository.findMethod(routingUriAuthority, exchangeRequest.method(), exchangeRequest.path());
-            if (methodDescriptor == null) {
-                return Mono.error(getRuntimeException(Status.NOT_FOUND, String.format("Not found for %s: %s", exchangeRequest.method(), exchangeRequest.path())));
-            }
+            return protobufRepository.findMethodDescriptor(routingUriAuthority, exchangeRequest.method(), exchangeRequest.path())
+                    .map(methodDescriptor -> handleRequestAndCallBackend(methodDescriptor, exchangeRequest, routingUriAuthority))
+                    .orElse(Mono.error(getRuntimeException(Status.NOT_FOUND, String.format("Not found for %s: %s", exchangeRequest.method(), exchangeRequest.path()))));
+
+        }
+
+        private Mono<Void> handleRequestAndCallBackend(HttpRuleMethodDescriptor methodDescriptor, ExchangeRequest exchangeRequest, String routingUriAuthority) {
             return getDelegate().writeWith(exchangeRequest.body()
                     .filter(dataBuffer -> dataBuffer.capacity() != 0)
                     .<HttpRuleMethodDescriptor.DynamicMessageBuilder>handle((dataBuffer, sink) -> {
@@ -113,7 +120,7 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                             config.getMappingAllowedHeaders().forEach(header -> exchangeRequest.header(header)
                                     .ifPresent(value -> metadata.put(Metadata.Key.of(header, ASCII_STRING_MARSHALLER), value)));
                             var metadataInterceptor = MetadataUtils.newAttachHeadersInterceptor(metadata);
-                            var channel = ClientInterceptors.intercept(channelRepository.get(routingUriAuthority), metadataInterceptor);
+                            var channel = ClientInterceptors.intercept(channelRepository.findChannel(routingUriAuthority), metadataInterceptor);
                             var call = channel.newCall(methodDescriptor.toDynamicMessageMethodDescriptor(), CallOptions.DEFAULT);
                             ClientCalls.asyncUnaryCall(call, builder.build(), new StreamObserver<>() {
                                 @Override
@@ -128,7 +135,7 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
 
                                 @Override
                                 public void onError(Throwable t) {
-                                    sink.error(getRuntimeException(Status.INTERNAL.withCause(t), "Unable to process request"));
+                                    sink.error(t);
                                 }
 
                                 @Override

@@ -34,14 +34,22 @@ See the examples directory for sample implementations showing how to:
 
 ## Dependencies
 
+### JitPack Repository
+Add the JitPack repository to your build file:
+```groovy
+repositories {
+    maven { url "https://jitpack.io" }
+}
+```
+
 ### Reflection Extension
 ```groovy
-implementation 'io.github.protobuf-x:grpc-proxy-reflection-extension:${project.version}'
+implementation 'io.github.protobuf-x.grpc-proxy:reflection-extension:${project.version}'
 ```
 
 ### Spring Cloud Gateway Extension
 ```groovy
-implementation 'io.github.protobuf-x:grpc-proxy-spring-cloud-gateway:${project.version}'
+implementation 'io.github.protobuf-x.grpc-proxy:spring-cloud-gateway:${project.version}'
 ```
 
 ### Requirements for Using Reflection Extension

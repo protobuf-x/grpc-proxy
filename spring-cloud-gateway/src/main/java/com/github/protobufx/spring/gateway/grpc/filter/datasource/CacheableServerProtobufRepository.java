@@ -16,6 +16,7 @@ import com.github.protobux.reflection.extension.v1alpha.ServerReflectionExtensio
 import lombok.SneakyThrows;
 
 import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 public class CacheableServerProtobufRepository implements ProtobufRepository {
@@ -32,9 +33,9 @@ public class CacheableServerProtobufRepository implements ProtobufRepository {
 
     @SneakyThrows
     @Override
-    public HttpRuleMethodDescriptor findMethod(String targetUri, String method, String path) {
-        var index = cache.get(targetUri, () -> {
-            var channel = channelRepository.get(targetUri);
+    public Optional<HttpRuleMethodDescriptor> findMethodDescriptor(String serviceId, String method, String path) {
+        var index = cache.get(serviceId, () -> {
+            var channel = channelRepository.findChannel(serviceId);
             var stub = ServerReflectionExtensionGrpc.newBlockingStub(channel);
             var response = stub.reflectServerDescriptor(ReflectServerDescriptorRequest.getDefaultInstance());
             var output = ByteString.newOutput();
@@ -56,7 +57,7 @@ public class CacheableServerProtobufRepository implements ProtobufRepository {
                 throw new RuntimeException(e);
             }
         });
-        return index.get(method, path);
+        return Optional.ofNullable(index.get(method, path));
     }
 
 }

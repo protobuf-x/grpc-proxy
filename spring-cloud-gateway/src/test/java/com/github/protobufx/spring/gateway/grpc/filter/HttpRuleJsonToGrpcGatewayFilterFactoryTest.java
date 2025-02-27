@@ -22,6 +22,7 @@ import reactor.test.StepVerifier;
 
 import java.io.InputStream;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.http.HttpMethod.*;
@@ -58,10 +59,10 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
 
-        assertEquals(channel.requestMethodName(), "example.echo.v1.EchoService/CreateSound");
-        assertEquals(channel.requestMessage(), "sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"10\"\n  }\n  type: SONG\n}\n");
-        assertEquals(channel.requestHeaders(), "Metadata(x-api-key=my-password)");
-        assertEquals(exchange.getResponse().getBodyAsString().block(), responseBody);
+        assertEquals("example.echo.v1.EchoService/CreateSound", channel.requestMethodName());
+        assertEquals("sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"10\"\n  }\n  type: SONG\n}\n", channel.requestMessage());
+        assertEquals("Metadata(x-api-key=my-password)", channel.requestHeaders());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
     }
 
     @Test
@@ -76,9 +77,9 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
 
-        assertEquals(channel.requestMethodName(), "example.echo.v1.EchoService/CreateSound");
-        assertEquals(channel.requestMessage(), "sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"10\"\n  }\n}\n");
-        assertEquals(exchange.getResponse().getBodyAsString().block(), responseBody);
+        assertEquals("example.echo.v1.EchoService/CreateSound", channel.requestMethodName());
+        assertEquals("sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"10\"\n  }\n}\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
     }
 
     @Test
@@ -92,9 +93,9 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
 
-        assertEquals(channel.requestMethodName(), "example.echo.v1.EchoService/GetSound");
-        assertEquals(channel.requestMessage(), "sound_id: \"123\"\nwave_ids: \"10\"\nwave_ids: \"20\"\ntype: VOICE\n");
-        assertEquals(exchange.getResponse().getBodyAsString().block(), responseBody);
+        assertEquals("example.echo.v1.EchoService/GetSound", channel.requestMethodName());
+        assertEquals("sound_id: \"123\"\nwave_ids: \"10\"\nwave_ids: \"20\"\ntype: VOICE\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
     }
 
     @Test
@@ -108,9 +109,9 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
 
-        assertEquals(channel.requestMethodName(), "example.echo.v1.EchoService/GetWave");
-        assertEquals(channel.requestMessage(), "sound_id: \"123\"\nwave_id: \"456\"\n");
-        assertEquals(exchange.getResponse().getBodyAsString().block(), responseBody);
+        assertEquals("example.echo.v1.EchoService/GetWave", channel.requestMethodName());
+        assertEquals("sound_id: \"123\"\nwave_id: \"456\"\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
     }
 
     @Test
@@ -124,9 +125,9 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
 
-        assertEquals(channel.requestMethodName(), "example.echo.v1.EchoService/UpdateSound");
-        assertEquals(channel.requestMessage(), "sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"456\"\n    value: \"v1\"\n  }\n}\n");
-        assertEquals(exchange.getResponse().getBodyAsString().block(), responseBody);
+        assertEquals("example.echo.v1.EchoService/UpdateSound", channel.requestMethodName());
+        assertEquals("sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"456\"\n    value: \"v1\"\n  }\n}\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
     }
 
     @Test
@@ -140,9 +141,9 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
 
-        assertEquals(channel.requestMethodName(), "example.echo.v1.EchoService/PlaySound");
-        assertEquals(channel.requestMessage(), "sound_id: \"123\"\nsound_name: \"my music\"\n");
-        assertEquals(exchange.getResponse().getBodyAsString().block(), responseBody);
+        assertEquals("example.echo.v1.EchoService/PlaySound", channel.requestMethodName());
+        assertEquals("sound_id: \"123\"\nsound_name: \"my music\"\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
     }
 
     @ParameterizedTest(name = "Mapping success - GetSoundCustomType with {0}")
@@ -162,9 +163,9 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
 
-        assertEquals(channel.requestMethodName(), "example.echo.v1.EchoService/GetSoundCustomType");
-        assertEquals(channel.requestMessage(), "sound_type: VOICE\nfield_mask {\n  paths: \"f1\"\n  paths: \"f2\"\n}\ncreate_time {\n  seconds: 1601901296\n}\nplay_time {\n  seconds: 186\n}\n");
-        assertEquals(exchange.getResponse().getBodyAsString().block(), responseBody);
+        assertEquals("example.echo.v1.EchoService/GetSoundCustomType", channel.requestMethodName());
+        assertEquals("sound_type: VOICE\nfield_mask {\n  paths: \"f1\"\n  paths: \"f2\"\n}\ncreate_time {\n  seconds: 1601901296\n}\nplay_time {\n  seconds: 186\n}\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
     }
 
     @ParameterizedTest(name = "Mapping fail - {0}")
@@ -200,9 +201,19 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
                 .verify();
     }
 
-    static class Tests {
+    @Test
+    @DisplayName("When gRPC server returns error code, it should be handled with ResponseStatusException")
+    void testGrpcErrorHandling() {
+        var exchange = ObjectMother.createRequestExchange(POST, "/example.echo.v1.EchoService/CreateSound", "{}");
+        var channel = ObjectMother.createInvalidErrorResponseChannel();
+        var filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
+        StepVerifier.create(filter.filter(exchange, chain))
+                .expectErrorMatches(e -> e instanceof StatusRuntimeException && 
+                                         ((StatusRuntimeException) e).getStatus().getCode() == Status.Code.INVALID_ARGUMENT)
+                .verify();
     }
+
     static class ObjectMother {
         static MockServerWebExchange createRequestExchange(HttpMethod method, String path, String... body) {
             var host = "http://localhost:8080";
@@ -218,12 +229,12 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
             return exchange;
         }
 
-        static GatewayFilter createHttpRuleJsonToGrpcFilter(MockChannel<? extends Message> channel) {
+        static GatewayFilter createHttpRuleJsonToGrpcFilter(Channel channel) {
             var config = new HttpRuleJsonToGrpcGatewayFilterFactory.Config();
             config.setMappingAllowedHeaders(List.of("x-api-key"));
             return new HttpRuleJsonToGrpcGatewayFilterFactory(
                     target -> channel,
-                    (uri, method, path) -> index.get(method, path)
+                    (uri, method, path) -> Optional.ofNullable(index.get(method, path))
             ).apply(config);
         }
 
@@ -242,6 +253,44 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
                 throw new RuntimeException(e);
             }
             return new MockChannel<>(builder.build());
+        }
+
+        public static Channel createInvalidErrorResponseChannel() {
+            return new Channel() {
+                @Override
+                public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(io.grpc.MethodDescriptor<ReqT, RespT> methodDescriptor, CallOptions callOptions) {
+                    return new ClientCall<ReqT, RespT>() {
+                        private Listener<RespT> responseListener;
+
+                        @Override
+                        public void start(Listener<RespT> responseListener, Metadata headers) {
+                            this.responseListener = responseListener;
+                        }
+
+                        @Override
+                        public void request(int numMessages) {
+                            responseListener.onClose(Status.INVALID_ARGUMENT.withDescription("invalid argument request."), new Metadata());
+                        }
+
+                        @Override
+                        public void cancel(String message, Throwable cause) {
+                        }
+
+                        @Override
+                        public void halfClose() {
+                        }
+
+                        @Override
+                        public void sendMessage(ReqT message) {
+                        }
+                    };
+                }
+
+                @Override
+                public String authority() {
+                    return "";
+                }
+            };
         }
     }
 

@@ -16,6 +16,9 @@ import java.util.Map;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toMap;
 
+/**
+ * A class that indexes and provides access to HTTP rule mappings for gRPC methods.
+ */
 public class FileDescriptorIndex {
     Map<String, DescriptorProtos.FileDescriptorProto> fileMap;
     Map<HttpRuleDefinition, HttpRuleMethodDescriptor> httpRuleMap;

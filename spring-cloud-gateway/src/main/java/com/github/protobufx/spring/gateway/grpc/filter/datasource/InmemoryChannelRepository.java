@@ -11,8 +11,8 @@ public class InmemoryChannelRepository implements ChannelRepository {
     Map<String, Channel> channels = new ConcurrentHashMap<>();
 
     @Override
-    public Channel get(String target) {
-        return channels.computeIfAbsent(target, t -> ManagedChannelBuilder.forTarget(t)
+    public Channel findChannel(String channelTarget) {
+        return channels.computeIfAbsent(channelTarget, t -> ManagedChannelBuilder.forTarget(t)
                 .usePlaintext()
                 .build());
     }

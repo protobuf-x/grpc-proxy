@@ -6,13 +6,20 @@ option java_multiple_files = true;
 option java_package = "com.github.protobux.reflection.extension.v1alpha";
 option java_outer_classname = "ReflectionExtensionProto";
 
+// ServerReflectionExtension provides gRPC reflection capabilities for service discovery
 service ServerReflectionExtension {
+
+  // Since ProtoReflectionService can only get a Descriptor for a single method,
+  // this provides functionality to get all Descriptors provided by the server.
   rpc ReflectServerDescriptor(ReflectServerDescriptorRequest) returns (stream ReflectServerDescriptorResponse);
 }
 
+// ReflectServerDescriptorRequest is an empty request message for ReflectServerDescriptor
 message ReflectServerDescriptorRequest {
 }
 
+// ReflectServerDescriptorResponse is a response message containing a serialized FileDescriptorSet
 message ReflectServerDescriptorResponse {
+  // The serialized FileDescriptorSet containing all service definitions
   bytes file_descriptor_set = 1;
 }

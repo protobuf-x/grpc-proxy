@@ -30,6 +30,18 @@ import static com.google.common.base.CaseFormat.LOWER_CAMEL;
 import static com.google.common.base.CaseFormat.LOWER_UNDERSCORE;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+/**
+ * A descriptor class that handles HTTP rule mapping for gRPC methods.
+ * This class provides functionality to:
+ * - Extract path patterns from HttpRule annotations
+ * - Determine HTTP methods (GET, POST, PUT, DELETE, PATCH)
+ * - Handle path variables in URL patterns
+ * - Generate default paths when HTTP rules are not specified
+ * - Parse and convert between HTTP requests and gRPC messages
+ *
+ * The class works with Google's HttpRule protobuf annotations to enable
+ * RESTful interfaces for gRPC services.
+ */
 @Slf4j
 @AllArgsConstructor
 public class HttpRuleMethodDescriptor {
