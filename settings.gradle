@@ -1,5 +1,5 @@
 rootProject.name = 'grpc-proxy'
-include 'grpc-proxy-reflection-extension'
-include 'grpc-proxy-spring-cloud-gateway'
+include 'reflection-extension'
+include 'spring-cloud-gateway'
 include 'examples:example-server'
 include 'examples:example-spring-cloud-gateway'
