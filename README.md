@@ -67,7 +67,7 @@ implementation 'io.github.protobuf-x.grpc-proxy:spring-cloud-gateway:${project.v
 ```java
 Server server = ServerBuilder.forPort(9090)
     .addService(new YourServiceImpl())
-    .addService(ProtoReflectionService.newInstance()) // Add this line
+    .addService(ReflectionExtensionService.newInstance()) // Add this line
     .build();
 ```
 
