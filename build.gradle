@@ -85,9 +85,13 @@ project(':reflection-extension') {
         withSourcesJar()
         withJavadocJar()
     }
+    
+    tasks.withType(Javadoc) {
+        options.addStringOption('Xdoclint:none', '-quiet')
+    }
 
     tasks.withType(Jar).configureEach {
-        duplicatesStrategy = DuplicatesStrategy.WARN
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
 
     publishing {
@@ -139,10 +143,6 @@ project(':spring-cloud-gateway') {
     java {
         withSourcesJar()
         withJavadocJar()
-    }
-
-    tasks.withType(Jar).configureEach {
-        duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
 
     publishing {
