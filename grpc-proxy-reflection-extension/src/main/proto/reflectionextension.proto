@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-package protobux.reflection.extension.v1alpha;
+package protobufx.reflection.extension.v1alpha;
 
 option java_multiple_files = true;
-option java_package = "com.github.protobux.reflection.extension.v1alpha";
+option java_package = "com.github.protobufx.reflection.extension.v1alpha";
 option java_outer_classname = "ReflectionExtensionProto";
 
 // ServerReflectionExtension provides gRPC reflection capabilities for service discovery

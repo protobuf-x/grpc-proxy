@@ -45,7 +45,7 @@ def protoBuildOption = System.properties.containsKey("os.name")
         && System.properties.containsKey("os.arch")
         && System.properties.get("os.arch") == "aarch64" ? ':osx-x86_64' : ''
 
-project(':reflection-extension') {
+project(':grpc-proxy-reflection-extension') {
     apply plugin: 'com.google.protobuf'
     apply plugin: 'maven-publish'
 
@@ -85,8 +85,8 @@ project(':reflection-extension') {
         withSourcesJar()
         withJavadocJar()
     }
-    
-    tasks.withType(Javadoc) {
+
+    tasks.withType(Javadoc).configureEach {
         options.addStringOption('Xdoclint:none', '-quiet')
     }
 
@@ -106,13 +106,13 @@ project(':reflection-extension') {
     }
 }
 
-project(':spring-cloud-gateway') {
+project(':grpc-proxy-spring-cloud-gateway') {
     apply plugin: 'org.springframework.boot'
     apply plugin: 'io.spring.dependency-management'
     apply plugin: 'maven-publish'
 
     dependencies {
-        implementation project(':reflection-extension')
+        implementation project(':grpc-proxy-reflection-extension')
         implementation "org.springframework.cloud:spring-cloud-gateway-server"
         implementation "org.springframework:spring-webflux"
         implementation "io.netty:netty-buffer"
@@ -169,7 +169,7 @@ project(':examples:example-spring-cloud-gateway') {
     apply plugin: 'io.spring.dependency-management'
 
     dependencies {
-        implementation project(':spring-cloud-gateway')
+        implementation project(':grpc-proxy-spring-cloud-gateway')
         implementation "io.grpc:grpc-protobuf:${grpcVersion}"
         implementation "io.grpc:grpc-netty:${grpcVersion}"
         implementation "io.grpc:grpc-api:${grpcVersion}"
@@ -190,7 +190,7 @@ project(':examples:example-server') {
     apply plugin: 'com.google.protobuf'
 
     dependencies {
-        implementation project(':reflection-extension')
+        implementation project(':grpc-proxy-reflection-extension')
         implementation "io.github.lognet:grpc-spring-boot-starter:${springGrpcVersion}"
     }
 

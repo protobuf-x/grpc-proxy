@@ -11,8 +11,8 @@ import com.github.protobufx.spring.gateway.grpc.filter.ChannelRepository;
 import com.github.protobufx.spring.gateway.grpc.filter.FileDescriptorIndex;
 import com.github.protobufx.spring.gateway.grpc.filter.HttpRuleMethodDescriptor;
 import com.github.protobufx.spring.gateway.grpc.filter.ProtobufRepository;
-import com.github.protobux.reflection.extension.v1alpha.ReflectServerDescriptorRequest;
-import com.github.protobux.reflection.extension.v1alpha.ServerReflectionExtensionGrpc;
+import com.github.protobufx.reflection.extension.v1alpha.ReflectServerDescriptorRequest;
+import com.github.protobufx.reflection.extension.v1alpha.ServerReflectionExtensionGrpc;
 import lombok.SneakyThrows;
 
 import java.io.IOException;

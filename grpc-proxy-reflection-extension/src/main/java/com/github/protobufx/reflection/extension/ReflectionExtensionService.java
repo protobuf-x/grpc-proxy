@@ -2,9 +2,9 @@ package com.github.protobufx.reflection.extension;
 
 import com.google.protobuf.DescriptorProtos;
 import com.google.protobuf.Descriptors;
-import com.github.protobux.reflection.extension.v1alpha.ReflectServerDescriptorRequest;
-import com.github.protobux.reflection.extension.v1alpha.ReflectServerDescriptorResponse;
-import com.github.protobux.reflection.extension.v1alpha.ServerReflectionExtensionGrpc;
+import com.github.protobufx.reflection.extension.v1alpha.ReflectServerDescriptorRequest;
+import com.github.protobufx.reflection.extension.v1alpha.ReflectServerDescriptorResponse;
+import com.github.protobufx.reflection.extension.v1alpha.ServerReflectionExtensionGrpc;
 import io.grpc.InternalServer;
 import io.grpc.Server;
 import io.grpc.ServerServiceDefinition;
