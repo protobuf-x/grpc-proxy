@@ -44,12 +44,12 @@ repositories {
 
 ### Reflection Extension
 ```groovy
-implementation 'com.github.protobuf-x:grpc-proxy-reflection-extension:${release-version}'
+implementation 'com.github.protobuf-x.grpc-proxy:reflection-extension:${release-version}'
 ```
 
 ### Spring Cloud Gateway Extension
 ```groovy
-implementation 'com.github.protobuf-x:grpc-proxy-spring-cloud-gateway:${release-version}'
+implementation 'com.github.protobuf-x.grpc-proxy:spring-cloud-gateway:${release-version}'
 ```
 
 ### Requirements for Using Reflection Extension
