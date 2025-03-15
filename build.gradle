@@ -24,7 +24,7 @@ apply plugin: 'idea'
 
 group = 'com.github.protobuf-x'
 version = '0.0.1-SNAPSHOT'
-sourceCompatibility = JavaVersion.VERSION_11
+sourceCompatibility = JavaVersion.VERSION_1_8
 
 repositories {
     mavenCentral()

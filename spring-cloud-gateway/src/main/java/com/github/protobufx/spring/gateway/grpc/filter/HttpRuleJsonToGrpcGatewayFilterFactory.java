@@ -34,6 +34,7 @@ import reactor.core.publisher.Mono;
 import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -55,7 +56,7 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
     @Override
     public GatewayFilter apply(Config config) {
         return (exchange, chain) -> {
-            var modifiedResponse = new GrpcResponseDecorator(exchange, config);
+            GrpcResponseDecorator modifiedResponse = new GrpcResponseDecorator(exchange, config);
             ServerWebExchangeUtils.setAlreadyRouted(exchange);
             return modifiedResponse.writeWith(exchange.getRequest().getBody())
                     .then(chain.filter(exchange.mutate().response(modifiedResponse).build()));
@@ -76,11 +77,11 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
         @Nonnull
         public Mono<Void> writeWith(@Nonnull Publisher<? extends DataBuffer> body) {
             exchange.getResponse().getHeaders().set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
-            var routingUriAuthority = ((Route) exchange.getAttributes().get(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR))
+            String routingUriAuthority = ((Route) exchange.getAttributes().get(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR))
                     .getUri()
                     .getAuthority();
 
-            var exchangeRequest = new ExchangeRequest(exchange.getRequest());
+            ExchangeRequest exchangeRequest = new ExchangeRequest(exchange.getRequest());
             return protobufRepository.findMethodDescriptor(routingUriAuthority, exchangeRequest.method(), exchangeRequest.path())
                     .map(methodDescriptor -> handleRequestAndCallBackend(methodDescriptor, exchangeRequest, routingUriAuthority))
                     .orElse(Mono.error(getRuntimeException(Status.NOT_FOUND, String.format("Not found for %s: %s", exchangeRequest.method(), exchangeRequest.path()))));
@@ -92,8 +93,8 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                     .filter(dataBuffer -> dataBuffer.capacity() != 0)
                     .<HttpRuleMethodDescriptor.DynamicMessageBuilder>handle((dataBuffer, sink) -> {
                         try {
-                            var builder = new HttpRuleMethodDescriptor.DynamicMessageBuilder(methodDescriptor.getInputType(), config.jsonParser, OBJECT_MAPPER);
-                            var bodyFiledName = methodDescriptor.getBodyFiledName();
+                            HttpRuleMethodDescriptor.DynamicMessageBuilder builder = new HttpRuleMethodDescriptor.DynamicMessageBuilder(methodDescriptor.getInputType(), config.jsonParser, OBJECT_MAPPER);
+                            String bodyFiledName = methodDescriptor.getBodyFiledName();
                             builder.setFields(bodyFiledName, dataBuffer);
                             sink.next(builder);
                         } catch (Exception e) {
@@ -105,7 +106,7 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                         try {
                             if (methodDescriptor.isCustomHttpRule(exchangeRequest.method(), exchangeRequest.path())) {
                                 if (methodDescriptor.containsPathVariable()) {
-                                    var variables = methodDescriptor.getVariables(exchangeRequest.path());
+                                    MultiValueMap<String, String> variables = methodDescriptor.getVariables(exchangeRequest.path());
                                     builder.setFields(variables);
                                 }
                                 builder.setFields(exchangeRequest.queryParams());
@@ -116,13 +117,13 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                         }
 
                         try {
-                            var metadata = new Metadata();
+                            Metadata metadata = new Metadata();
                             config.getMappingAllowedHeaders().forEach(header -> exchangeRequest.header(header)
                                     .ifPresent(value -> metadata.put(Metadata.Key.of(header, ASCII_STRING_MARSHALLER), value)));
-                            var metadataInterceptor = MetadataUtils.newAttachHeadersInterceptor(metadata);
-                            var channel = ClientInterceptors.intercept(channelRepository.findChannel(routingUriAuthority), metadataInterceptor);
-                            var call = channel.newCall(methodDescriptor.toDynamicMessageMethodDescriptor(), CallOptions.DEFAULT);
-                            ClientCalls.asyncUnaryCall(call, builder.build(), new StreamObserver<>() {
+                            ClientInterceptor metadataInterceptor = MetadataUtils.newAttachHeadersInterceptor(metadata);
+                            Channel channel = ClientInterceptors.intercept(channelRepository.findChannel(routingUriAuthority), metadataInterceptor);
+                            ClientCall<DynamicMessage, DynamicMessage> call = channel.newCall(methodDescriptor.toDynamicMessageMethodDescriptor(), CallOptions.DEFAULT);
+                            ClientCalls.asyncUnaryCall(call, builder.build(), new StreamObserver<DynamicMessage>() {
                                 @Override
                                 public void onNext(DynamicMessage value) {
                                     try {
@@ -187,7 +188,7 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
         JsonFormat.Printer jsonPrinter;
 
         public Config() {
-            mappingAllowedHeaders = List.of();
+            mappingAllowedHeaders = Collections.emptyList();
             jsonParser = JsonFormat.parser().ignoringUnknownFields();
             jsonPrinter = JsonFormat.printer().includingDefaultValueFields();
         }
@@ -218,7 +219,7 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
         }
 
         public Optional<String> header(String header) {
-            var headers = request.getHeaders().get(header);
+            List<String> headers = request.getHeaders().get(header);
             return (headers == null || headers.isEmpty())
                     ? Optional.empty() : Optional.of(headers.get(0));
         }

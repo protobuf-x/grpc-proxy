@@ -21,7 +21,7 @@ public class ReflectionExtensionService extends ServerReflectionExtensionGrpc.Se
     @Override
     public void reflectServerDescriptor(ReflectServerDescriptorRequest request, StreamObserver<ReflectServerDescriptorResponse> responseObserver) {
         Server server = InternalServer.SERVER_CONTEXT_KEY.get();
-        var index = new FileDescriptorIndex(server.getServices());
+        FileDescriptorIndex index = new FileDescriptorIndex(server.getServices());
         responseObserver.onNext(ReflectServerDescriptorResponse.newBuilder()
                 .setFileDescriptorSet(DescriptorProtos.FileDescriptorSet.newBuilder()
                         .addAllFile(index.fileDescriptorsByName.values().stream()

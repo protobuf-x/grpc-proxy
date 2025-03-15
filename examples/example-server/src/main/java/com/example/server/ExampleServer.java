@@ -3,9 +3,11 @@ package com.example.server;
 import com.example.echo.v1.*;
 import com.github.protobufx.reflection.extension.ReflectionExtensionService;
 import io.grpc.stub.StreamObserver;
+import org.lognet.springboot.grpc.GRpcServerBuilderConfigurer;
 import org.lognet.springboot.grpc.GRpcService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication
 public class ExampleServer {
@@ -13,8 +15,14 @@ public class ExampleServer {
         SpringApplication.run(ExampleServer.class, args);
     }
 
-    @GRpcService
-    static class ReflectionExtensionServiceX extends ReflectionExtensionService {
+    @Bean
+    GRpcServerBuilderConfigurer serverBuilderConfigurer() {
+        return new GRpcServerBuilderConfigurer() {
+            @Override
+            public void configure(io.grpc.ServerBuilder<?> serverBuilder) {
+                serverBuilder.addService(new ReflectionExtensionService());
+            }
+        };
     }
 
     @GRpcService
@@ -29,7 +37,7 @@ public class ExampleServer {
 
         @Override
         public void createSound(CreateSoundRequest request, StreamObserver<Sound> responseObserver) {
-            var sound = request.getSound();
+            Sound sound = request.getSound();
             responseObserver.onNext(Sound.newBuilder()
                     .setSoundId(sound.getSoundId())
                     .addAllWaves(sound.getWavesList())

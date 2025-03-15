@@ -1,6 +1,7 @@
 package com.github.protobufx.spring.gateway.grpc.filter;
 
 import com.google.api.AnnotationsProto;
+import com.google.common.io.ByteStreams;
 import com.google.protobuf.*;
 import com.google.protobuf.util.JsonFormat;
 import io.grpc.*;
@@ -14,6 +15,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.route.Route;
 import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
@@ -21,7 +23,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.io.InputStream;
-import java.util.List;
+import java.util.Collections;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,26 +37,26 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
     @BeforeAll
     static void beforeAll() throws Exception {
         byte[] protoBinary;
-        var resource = new DefaultResourceLoader().getResource("classpath:descriptors.pb");
+        Resource resource = new DefaultResourceLoader().getResource("classpath:descriptors.pb");
         try (InputStream inputStream = resource.getInputStream()) {
-            protoBinary = inputStream.readAllBytes();
+            protoBinary = ByteStreams.toByteArray(inputStream);
         }
-        var extensionRegistry = ExtensionRegistry.newInstance();
+        ExtensionRegistry extensionRegistry = ExtensionRegistry.newInstance();
         extensionRegistry.add(AnnotationsProto.http);
-        var descriptorSet = DescriptorProtos.FileDescriptorSet.parseFrom(protoBinary, extensionRegistry);
+        DescriptorProtos.FileDescriptorSet descriptorSet = DescriptorProtos.FileDescriptorSet.parseFrom(protoBinary, extensionRegistry);
         index = new FileDescriptorIndex(descriptorSet);
     }
 
     @Test
     @DisplayName("Mapping success - default mapping + metadata")
     void testMappingDefault() {
-        var exchange = ObjectMother.createRequestExchange(POST, "/example.echo.v1.EchoService/CreateSound",
+        MockServerWebExchange exchange = ObjectMother.createRequestExchange(POST, "/example.echo.v1.EchoService/CreateSound",
                 "{ \"sound\": { \"soundId\": \"123\", \"type\": \"SONG\", \"waves\": [{\"waveId\": 10}] } }");
-        var responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SONG\"\n}";
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SONG\"\n}";
         exchange.getRequest().mutate().header("x-user-id", "user-123");
         exchange.getRequest().mutate().header("x-api-key", "my-password");
-        var channel = ObjectMother.createResponseChannel(exchange, responseBody);
-        var filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
@@ -68,11 +70,11 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
     @Test
     @DisplayName("Mapping success - POST + Http rule")
     void testMappingPostHttpRule() {
-        var exchange = ObjectMother.createRequestExchange(POST, "/sounds",
+        MockServerWebExchange exchange = ObjectMother.createRequestExchange(POST, "/sounds",
                 "{ \"sound\": { \"soundId\": \"123\", \"waves\": [{\"waveId\": 10}] } }");
-        var responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
-        var channel = ObjectMother.createResponseChannel(exchange, responseBody);
-        var filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
@@ -85,10 +87,10 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
     @Test
     @DisplayName("Mapping success - GET + query parameter + path variable")
     void testMappingGetPathVariableAndParameter() {
-        var exchange = ObjectMother.createRequestExchange(GET, "/sounds/123?waveIds=10&waveIds=20&type=VOICE");
-        var responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
-        var channel = ObjectMother.createResponseChannel(exchange, responseBody);
-        var filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+        MockServerWebExchange exchange = ObjectMother.createRequestExchange(GET, "/sounds/123?waveIds=10&waveIds=20&type=VOICE");
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
@@ -101,10 +103,10 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
     @Test
     @DisplayName("Mapping success - GET + nest path variable + longest match")
     void testMappingNestPathVariables() {
-        var exchange = ObjectMother.createRequestExchange(GET, "/sounds/123/waves/456");
-        var responseBody = "{\n  \"waveId\": \"10\",\n  \"value\": \"\"\n}";
-        var channel = ObjectMother.createResponseChannel(exchange, responseBody);
-        var filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+        MockServerWebExchange exchange = ObjectMother.createRequestExchange(GET, "/sounds/123/waves/456");
+        String responseBody = "{\n  \"waveId\": \"10\",\n  \"value\": \"\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
@@ -117,10 +119,10 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
     @Test
     @DisplayName("Mapping success - GET + nest filed body + field path variable")
     void testMappingFiledBodyMapping() {
-        var exchange = ObjectMother.createRequestExchange(PATCH, "/sounds/123", "{\"sound\": {\"waves\": [{\"wave_id\": \"456\", \"value\": \"v1\"}]}}");
-        var responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
-        var channel = ObjectMother.createResponseChannel(exchange, responseBody);
-        var filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+        MockServerWebExchange exchange = ObjectMother.createRequestExchange(PATCH, "/sounds/123", "{\"sound\": {\"waves\": [{\"wave_id\": \"456\", \"value\": \"v1\"}]}}");
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
@@ -133,10 +135,10 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
     @Test
     @DisplayName("Mapping success - Custom method")
     void testMappingCustomMethod() {
-        var exchange = ObjectMother.createRequestExchange(POST, "/sounds/123:play", "{\n  \"soundName\": \"my music\"\n}");
-        var responseBody = "{\n  \"message\": \"now playing...\"\n}";
-        var channel = ObjectMother.createResponseChannel(exchange, responseBody);
-        var filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+        MockServerWebExchange exchange = ObjectMother.createRequestExchange(POST, "/sounds/123:play", "{\n  \"soundName\": \"my music\"\n}");
+        String responseBody = "{\n  \"message\": \"now playing...\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
@@ -153,12 +155,12 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         "path variable,'/soundCustomTypes/VOICE/2020-10-05T12:34:56Z/186s/f1,f2',"
     })
     void testGetSoundCustomType(String testCase, String path, String body) {
-        var exchange = body == null
+        MockServerWebExchange exchange = body == null
             ? ObjectMother.createRequestExchange(GET, path)
             : ObjectMother.createRequestExchange(POST, path, body);
-        var responseBody = "{\n  \"soundType\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
-        var channel = ObjectMother.createResponseChannel(exchange, responseBody);
-        var filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+        String responseBody = "{\n  \"soundType\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
@@ -177,12 +179,12 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         "Not found url,'/example.echo.v1.EchoService/CreateEcho',"
     })
     void testMappingErrors(String testCase, String path, String body) {
-        var exchange = body == null
+        MockServerWebExchange exchange = body == null
             ? ObjectMother.createRequestExchange(GET, path)
             : ObjectMother.createRequestExchange(POST, path, body);
-        var responseBody = "{}";
-        var channel = ObjectMother.createResponseChannel(exchange, responseBody);
-        var filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+        String responseBody = "{}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .expectErrorMatches(e -> {
@@ -204,9 +206,9 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
     @Test
     @DisplayName("When gRPC server returns error code, it should be handled with ResponseStatusException")
     void testGrpcErrorHandling() {
-        var exchange = ObjectMother.createRequestExchange(POST, "/example.echo.v1.EchoService/CreateSound", "{}");
-        var channel = ObjectMother.createInvalidErrorResponseChannel();
-        var filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+        MockServerWebExchange exchange = ObjectMother.createRequestExchange(POST, "/example.echo.v1.EchoService/CreateSound", "{}");
+        Channel channel = ObjectMother.createInvalidErrorResponseChannel();
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
         StepVerifier.create(filter.filter(exchange, chain))
                 .expectErrorMatches(e -> e instanceof StatusRuntimeException && 
@@ -216,11 +218,11 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
 
     static class ObjectMother {
         static MockServerWebExchange createRequestExchange(HttpMethod method, String path, String... body) {
-            var host = "http://localhost:8080";
-            var requestBuilder = MockServerHttpRequest.method(method, host + path);
-            var request = body.length > 0 ? requestBuilder.body(body[0]) : requestBuilder.build();
-            var exchange = MockServerWebExchange.from(request);
-            var route = Route.async()
+            String host = "http://localhost:8080";
+            MockServerHttpRequest.BodyBuilder requestBuilder = MockServerHttpRequest.method(method, host + path);
+            MockServerHttpRequest request = body.length > 0 ? requestBuilder.body(body[0]) : requestBuilder.build();
+            MockServerWebExchange exchange = MockServerWebExchange.from(request);
+            Route route = Route.async()
                     .id("r1")
                     .uri(host)
                     .predicate(e -> true)
@@ -230,8 +232,8 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         }
 
         static GatewayFilter createHttpRuleJsonToGrpcFilter(Channel channel) {
-            var config = new HttpRuleJsonToGrpcGatewayFilterFactory.Config();
-            config.setMappingAllowedHeaders(List.of("x-api-key"));
+            HttpRuleJsonToGrpcGatewayFilterFactory.Config config = new HttpRuleJsonToGrpcGatewayFilterFactory.Config();
+            config.setMappingAllowedHeaders(Collections.singletonList("x-api-key"));
             return new HttpRuleJsonToGrpcGatewayFilterFactory(
                     target -> channel,
                     (uri, method, path) -> Optional.ofNullable(index.get(method, path))
@@ -239,14 +241,14 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         }
 
         static MockChannel<DynamicMessage> createResponseChannel(MockServerWebExchange exchange, String responseBody) {
-            var request = exchange.getRequest();
-            var methodDescriptor = index.get(request.getMethodValue(), request.getPath().value());
+            org.springframework.http.server.reactive.ServerHttpRequest request = exchange.getRequest();
+            HttpRuleMethodDescriptor methodDescriptor = index.get(request.getMethodValue(), request.getPath().value());
             if (methodDescriptor == null) {
                 return new MockChannel<>(DynamicMessage.getDefaultInstance(Empty.getDescriptor()));
             }
-            var descriptor = methodDescriptor.getMethodDescriptor();
-            var responseType = descriptor.getOutputType();
-            var builder = DynamicMessage.newBuilder(responseType);
+            Descriptors.MethodDescriptor descriptor = methodDescriptor.getMethodDescriptor();
+            Descriptors.Descriptor responseType = descriptor.getOutputType();
+            DynamicMessage.Builder builder = DynamicMessage.newBuilder(responseType);
             try {
                 JsonFormat.parser().merge(responseBody, builder);
             } catch (InvalidProtocolBufferException e) {
@@ -307,7 +309,7 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         @Override
         public <RequestT, ResponseT> ClientCall<RequestT, ResponseT> newCall(MethodDescriptor<RequestT, ResponseT> methodDescriptor, CallOptions callOptions) {
             requestMethodDescriptor = methodDescriptor;
-            return new ClientCall<>() {
+            return new ClientCall<RequestT, ResponseT>() {
                 ClientCall.Listener<ResponseT> listener;
 
                 @Override

@@ -24,6 +24,7 @@ import java.io.InputStreamReader;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import static com.google.common.base.CaseFormat.LOWER_CAMEL;
@@ -107,22 +108,22 @@ public class HttpRuleMethodDescriptor {
     }
 
     MultiValueMap<String, String> getVariables(String requestPath) {
-        var httpRuleDefinitionPathPattern = getPathPattern();
-        var springToHttpRuleVariables = new HashMap<String, String>();
-        var matcher = PATH_VARIABLE.matcher(httpRuleDefinitionPathPattern);
+        String httpRuleDefinitionPathPattern = getPathPattern();
+        Map<String, String> springToHttpRuleVariables = new HashMap<>();
+        java.util.regex.Matcher matcher = PATH_VARIABLE.matcher(httpRuleDefinitionPathPattern);
         while (matcher.find()) {
-            var variable = matcher.group(1);
-            var parts = variable.split("\\.");
-            var key = parts[parts.length - 1];
+            String variable = matcher.group(1);
+            String[] parts = variable.split("\\.");
+            String key = parts[parts.length - 1];
             springToHttpRuleVariables.put(key, variable);
         }
-        var pathMatchInfo = PATTERN_PARSER.parse(httpRuleDefinitionPathPattern.replaceAll("\\{[^.}]+\\.", "{"))
+        PathPattern.PathMatchInfo pathMatchInfo = PATTERN_PARSER.parse(httpRuleDefinitionPathPattern.replaceAll("\\{[^.}]+\\.", "{"))
                 .matchAndExtract(getPathContainer(requestPath));
         if (pathMatchInfo == null) {
             return new LinkedMultiValueMap<>();
         }
-        var result = new LinkedMultiValueMap<String, String>();
-        for (var entry : pathMatchInfo.getUriVariables().entrySet()) {
+        MultiValueMap<String, String> result = new LinkedMultiValueMap<>();
+        for (Map.Entry<String, String> entry : pathMatchInfo.getUriVariables().entrySet()) {
             result.add(springToHttpRuleVariables.get(entry.getKey()), entry.getValue());
         }
         return result;
@@ -177,16 +178,16 @@ public class HttpRuleMethodDescriptor {
                     parser.merge(new InputStreamReader(dataBuffer.asInputStream(), UTF_8), builder);
                 } else {
                     // support only the first layer of the field.
-                    var messageFiledName = convertCamelToSnake(filedName);
-                    var field = descriptor.findFieldByName(messageFiledName);
-                    var fieldBuilder = DynamicMessage.newBuilder(field.getMessageType());
-                    var jsonNode = objectMapper.readTree(dataBuffer.asInputStream());
+                    String messageFiledName = convertCamelToSnake(filedName);
+                    Descriptors.FieldDescriptor field = descriptor.findFieldByName(messageFiledName);
+                    DynamicMessage.Builder fieldBuilder = DynamicMessage.newBuilder(field.getMessageType());
+                    com.fasterxml.jackson.databind.JsonNode jsonNode = objectMapper.readTree(dataBuffer.asInputStream());
                     parser.merge(jsonNode.get(messageFiledName).toString(), fieldBuilder);
                     builder.setField(field, fieldBuilder.build());
                 }
             } catch (Exception e) {
                 log.error("Unable to merge from the supplied input stream: {}", e.getMessage(), e);
-                var status = com.google.rpc.Status.newBuilder()
+                com.google.rpc.Status status = com.google.rpc.Status.newBuilder()
                         .setCode(Status.INVALID_ARGUMENT.getCode().value())
                         .setMessage(String.format("Unable to merge from the supplied input stream: %s", e.getMessage()))
                         .build();
@@ -199,9 +200,9 @@ public class HttpRuleMethodDescriptor {
                 if (values.stream().allMatch(Strings::isNullOrEmpty)) {
                     return;
                 }
-                var fieldNames = key.split("\\.");
+                String[] fieldNames = key.split("\\.");
                 if (fieldNames.length != 0) {
-                    var fieldDescriptor = descriptor.findFieldByName(convertCamelToSnake(fieldNames[0]));
+                    Descriptors.FieldDescriptor fieldDescriptor = descriptor.findFieldByName(convertCamelToSnake(fieldNames[0]));
                     if (fieldDescriptor != null) {
                         setField(builder, fieldDescriptor, fieldNames, values);
                     }
@@ -217,13 +218,13 @@ public class HttpRuleMethodDescriptor {
                     builder.setField(fieldDescriptor, convertValue(fieldDescriptor, values.get(0)));
                 }
             } else {
-                var childFieldDescriptor = fieldDescriptor.getMessageType().findFieldByName(fieldNames[1]);
+                Descriptors.FieldDescriptor childFieldDescriptor = fieldDescriptor.getMessageType().findFieldByName(fieldNames[1]);
                 if (childFieldDescriptor != null) {
-                    var childDynamicMessage = builder.getField(fieldDescriptor);
+                    Object childDynamicMessage = builder.getField(fieldDescriptor);
                     if (childDynamicMessage == null) {
                         childDynamicMessage = DynamicMessage.newBuilder(fieldDescriptor.getMessageType()).build();
                     }
-                    var childBuilder = ((DynamicMessage) childDynamicMessage).toBuilder();
+                    DynamicMessage.Builder childBuilder = ((DynamicMessage) childDynamicMessage).toBuilder();
                     setField(childBuilder, childFieldDescriptor, getTail(fieldNames), values);
                     builder.setField(fieldDescriptor, childBuilder.build());
                 }
@@ -235,8 +236,8 @@ public class HttpRuleMethodDescriptor {
             if (field.getType().equals(Descriptors.FieldDescriptor.Type.ENUM)) {
                 return field.getEnumType().findValueByName(value);
             } else if (field.getType().equals(Descriptors.FieldDescriptor.Type.MESSAGE)) {
-                var message = DynamicMessage.newBuilder(field.getMessageType());
-                var json = objectMapper.writeValueAsString(value);
+                DynamicMessage.Builder message = DynamicMessage.newBuilder(field.getMessageType());
+                String json = objectMapper.writeValueAsString(value);
                 parser.merge(json, message);
                 return message.build();
             } else {

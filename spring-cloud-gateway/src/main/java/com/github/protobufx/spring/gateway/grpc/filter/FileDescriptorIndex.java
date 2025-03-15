@@ -11,6 +11,7 @@ import org.springframework.web.util.pattern.PathPatternParser;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static java.util.function.Function.identity;
@@ -25,19 +26,19 @@ public class FileDescriptorIndex {
     Map<HttpRuleDefinition, HttpRuleMethodDescriptor> pathVariableOnlyHttpRuleMap;
 
     public FileDescriptorIndex(DescriptorProtos.FileDescriptorSet descriptorSet) {
-        var protos = descriptorSet.getFileList();
+        List<DescriptorProtos.FileDescriptorProto> protos = descriptorSet.getFileList();
         this.fileMap = protos.stream()
                 .collect(toMap(DescriptorProtos.FileDescriptorProto::getName, identity()));
 
         this.httpRuleMap = new HashMap<>();
-        for (var proto : protos) {
-            var fileDescriptor = descriptorFromProto(proto);
-            for (var serviceDescriptor : fileDescriptor.getServices()) {
-                for (var methodDescriptor : serviceDescriptor.getMethods()) {
+        for (DescriptorProtos.FileDescriptorProto proto : protos) {
+            Descriptors.FileDescriptor fileDescriptor = descriptorFromProto(proto);
+            for (Descriptors.ServiceDescriptor serviceDescriptor : fileDescriptor.getServices()) {
+                for (Descriptors.MethodDescriptor methodDescriptor : serviceDescriptor.getMethods()) {
                     if (methodDescriptor.getOptions().hasExtension(AnnotationsProto.http)) {
-                        var httpRule = methodDescriptor.getOptions().getExtension(AnnotationsProto.http);
+                        HttpRule httpRule = methodDescriptor.getOptions().getExtension(AnnotationsProto.http);
                         indexHttpRuleMap(methodDescriptor, httpRule);
-                        for (var additionalBinding : httpRule.getAdditionalBindingsList()) {
+                        for (HttpRule additionalBinding : httpRule.getAdditionalBindingsList()) {
                             indexHttpRuleMap(methodDescriptor, additionalBinding);
                         }
                     } else {
@@ -54,18 +55,18 @@ public class FileDescriptorIndex {
     }
 
     void indexHttpRuleMap(Descriptors.MethodDescriptor methodDescriptor, HttpRule httpRule) {
-        var descriptor = new HttpRuleMethodDescriptor(methodDescriptor, httpRule);
+        HttpRuleMethodDescriptor descriptor = new HttpRuleMethodDescriptor(methodDescriptor, httpRule);
         httpRuleMap.put(new HttpRuleDefinition(descriptor.getMethod(), descriptor.getPathPattern()), descriptor);
     }
 
     @Nullable
     public HttpRuleMethodDescriptor get(String method, String path) {
-        var exactMatch = httpRuleMap.get(new HttpRuleDefinition(method, path));
+        HttpRuleMethodDescriptor exactMatch = httpRuleMap.get(new HttpRuleDefinition(method, path));
         if (exactMatch != null) {
             return exactMatch;
         }
 
-        for (var methodDescriptor : pathVariableOnlyHttpRuleMap.values()) {
+        for (HttpRuleMethodDescriptor methodDescriptor : pathVariableOnlyHttpRuleMap.values()) {
             if (methodDescriptor.matches(method, path)) {
                 return methodDescriptor;
             }
@@ -75,9 +76,9 @@ public class FileDescriptorIndex {
 
     @SneakyThrows
     Descriptors.FileDescriptor descriptorFromProto(DescriptorProtos.FileDescriptorProto descriptorProto) {
-        var fileDescriptors = descriptorProto.getDependencyList().stream()
+        Descriptors.FileDescriptor[] fileDescriptors = descriptorProto.getDependencyList().stream()
                 .map(dependencyName -> {
-                    var fileDescriptorProto = fileMap.get(dependencyName);
+                    DescriptorProtos.FileDescriptorProto fileDescriptorProto = fileMap.get(dependencyName);
                     if (fileDescriptorProto == null) {
                         throw new IllegalArgumentException("Could not find dependency: " + dependencyName);
                     }
