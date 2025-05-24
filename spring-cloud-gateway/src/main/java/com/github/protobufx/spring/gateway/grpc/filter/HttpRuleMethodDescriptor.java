@@ -20,6 +20,7 @@ import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
 
 import javax.annotation.Nullable;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -173,15 +174,15 @@ public class HttpRuleMethodDescriptor {
         }
 
         void setFields(String filedName, DataBuffer dataBuffer) {
-            try {
+            try (InputStream inputStream = dataBuffer.asInputStream()) {
                 if (filedName.equals("*")) {
-                    parser.merge(new InputStreamReader(dataBuffer.asInputStream(), UTF_8), builder);
+                    parser.merge(new InputStreamReader(inputStream, UTF_8), builder);
                 } else {
                     // support only the first layer of the field.
                     String messageFiledName = convertCamelToSnake(filedName);
                     Descriptors.FieldDescriptor field = descriptor.findFieldByName(messageFiledName);
                     DynamicMessage.Builder fieldBuilder = DynamicMessage.newBuilder(field.getMessageType());
-                    com.fasterxml.jackson.databind.JsonNode jsonNode = objectMapper.readTree(dataBuffer.asInputStream());
+                    com.fasterxml.jackson.databind.JsonNode jsonNode = objectMapper.readTree(inputStream);
                     parser.merge(jsonNode.get(messageFiledName).toString(), fieldBuilder);
                     builder.setField(field, fieldBuilder.build());
                 }

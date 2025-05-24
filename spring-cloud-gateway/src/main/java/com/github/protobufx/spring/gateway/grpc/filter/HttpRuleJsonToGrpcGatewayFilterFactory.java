@@ -108,12 +108,12 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                         } catch (Exception e) {
                             sink.error(getRuntimeException(Status.INVALID_ARGUMENT.withCause(e), "Unable to parse request body"));
                         } finally {
-                            // Release DataBuffer resources
-                            if (dataBuffer.capacity() > 0) {
+                            // Ensure DataBuffer is always released to prevent memory leaks
+                            if (dataBuffer != null && dataBuffer.capacity() > 0) {
                                 try {
                                     DataBufferUtils.release(dataBuffer);
                                 } catch (Exception e) {
-                                    log.warn("Failed to release DataBuffer", e);
+                                    log.warn("Failed to release DataBuffer: {}", e.getMessage(), e);
                                 }
                             }
                         }
@@ -256,6 +256,3 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
         }
     }
 }
-
-
-
