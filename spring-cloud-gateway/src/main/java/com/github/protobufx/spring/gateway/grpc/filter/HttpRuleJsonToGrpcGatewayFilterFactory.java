@@ -94,7 +94,7 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
         }
 
         private Mono<Void> handleRequestAndCallBackend(HttpRuleMethodDescriptor methodDescriptor, ExchangeRequest exchangeRequest, String routingUriAuthority) {
-            // 事前にBuilderインスタンスを用意
+            // Prepare Builder instance in advance
             HttpRuleMethodDescriptor.DynamicMessageBuilder defaultBuilder = createMessageBuilder(methodDescriptor);
             
             return getDelegate().writeWith(exchangeRequest.body()
@@ -108,7 +108,7 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                         } catch (Exception e) {
                             sink.error(getRuntimeException(Status.INVALID_ARGUMENT.withCause(e), "Unable to parse request body"));
                         } finally {
-                            // DataBufferのリソース解放
+                            // Release DataBuffer resources
                             if (dataBuffer.capacity() > 0) {
                                 try {
                                     DataBufferUtils.release(dataBuffer);
@@ -161,8 +161,8 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
 
                                 @Override
                                 public void onCompleted() {
-                                    // onNextが呼ばれずにストリームが完了した場合の処理
-                                    // 空のレスポンスを返す
+                                    // Handle case where stream completes without calling onNext
+                                    // Return empty response
                                     try {
                                         DataBuffer emptyBuffer = DATA_BUFFER_FACTORY.wrap(new byte[0]);
                                         sink.success(emptyBuffer);
