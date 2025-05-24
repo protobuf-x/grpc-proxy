@@ -21,6 +21,7 @@ import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFac
 import org.springframework.cloud.gateway.route.Route;
 import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.core.io.buffer.NettyDataBufferFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -34,6 +35,7 @@ import reactor.core.publisher.Mono;
 import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -48,6 +50,9 @@ import static io.grpc.Metadata.ASCII_STRING_MARSHALLER;
 @AllArgsConstructor
 @Slf4j
 public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilterFactory<HttpRuleJsonToGrpcGatewayFilterFactory.Config> {
+
+    private static final NettyDataBufferFactory DATA_BUFFER_FACTORY = 
+        new NettyDataBufferFactory(new PooledByteBufAllocator());
 
     ChannelRepository channelRepository;
     ProtobufRepository protobufRepository;
@@ -89,19 +94,31 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
         }
 
         private Mono<Void> handleRequestAndCallBackend(HttpRuleMethodDescriptor methodDescriptor, ExchangeRequest exchangeRequest, String routingUriAuthority) {
+            // 事前にBuilderインスタンスを用意
+            HttpRuleMethodDescriptor.DynamicMessageBuilder defaultBuilder = createMessageBuilder(methodDescriptor);
+            
             return getDelegate().writeWith(exchangeRequest.body()
                     .filter(dataBuffer -> dataBuffer.capacity() != 0)
                     .<HttpRuleMethodDescriptor.DynamicMessageBuilder>handle((dataBuffer, sink) -> {
                         try {
-                            HttpRuleMethodDescriptor.DynamicMessageBuilder builder = new HttpRuleMethodDescriptor.DynamicMessageBuilder(methodDescriptor.getInputType(), config.jsonParser, OBJECT_MAPPER);
+                            HttpRuleMethodDescriptor.DynamicMessageBuilder builder = createMessageBuilder(methodDescriptor);
                             String bodyFiledName = methodDescriptor.getBodyFiledName();
                             builder.setFields(bodyFiledName, dataBuffer);
                             sink.next(builder);
                         } catch (Exception e) {
                             sink.error(getRuntimeException(Status.INVALID_ARGUMENT.withCause(e), "Unable to parse request body"));
+                        } finally {
+                            // DataBufferのリソース解放
+                            if (dataBuffer.capacity() > 0) {
+                                try {
+                                    DataBufferUtils.release(dataBuffer);
+                                } catch (Exception e) {
+                                    log.warn("Failed to release DataBuffer", e);
+                                }
+                            }
                         }
                     })
-                    .defaultIfEmpty(new HttpRuleMethodDescriptor.DynamicMessageBuilder(methodDescriptor.getInputType(), config.jsonParser, OBJECT_MAPPER))
+                    .defaultIfEmpty(defaultBuilder)
                     .flatMap(builder -> Mono.create(sink -> {
                         try {
                             if (methodDescriptor.isCustomHttpRule(exchangeRequest.method(), exchangeRequest.path())) {
@@ -118,8 +135,10 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
 
                         try {
                             Metadata metadata = new Metadata();
-                            config.getMappingAllowedHeaders().forEach(header -> exchangeRequest.header(header)
-                                    .ifPresent(value -> metadata.put(Metadata.Key.of(header, ASCII_STRING_MARSHALLER), value)));
+                            for (String header : config.getMappingAllowedHeaders()) {
+                                exchangeRequest.header(header).ifPresent(value -> 
+                                    metadata.put(Metadata.Key.of(header, ASCII_STRING_MARSHALLER), value));
+                            }
                             ClientInterceptor metadataInterceptor = MetadataUtils.newAttachHeadersInterceptor(metadata);
                             Channel channel = ClientInterceptors.intercept(channelRepository.findChannel(routingUriAuthority), metadataInterceptor);
                             ClientCall<DynamicMessage, DynamicMessage> call = channel.newCall(methodDescriptor.toDynamicMessageMethodDescriptor(), CallOptions.DEFAULT);
@@ -127,8 +146,9 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                                 @Override
                                 public void onNext(DynamicMessage value) {
                                     try {
-                                        sink.success(new NettyDataBufferFactory(new PooledByteBufAllocator())
-                                                .wrap(config.jsonPrinter.print(value).getBytes()));
+                                        String jsonString = config.jsonPrinter.print(value);
+                                        byte[] jsonBytes = jsonString.getBytes(StandardCharsets.UTF_8);
+                                        sink.success(DATA_BUFFER_FACTORY.wrap(jsonBytes));
                                     } catch (InvalidProtocolBufferException e) {
                                         sink.error(getRuntimeException(Status.INTERNAL.withCause(e), "Unable to serialize response"));
                                     }
@@ -141,7 +161,14 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
 
                                 @Override
                                 public void onCompleted() {
-                                    sink.success();
+                                    // onNextが呼ばれずにストリームが完了した場合の処理
+                                    // 空のレスポンスを返す
+                                    try {
+                                        DataBuffer emptyBuffer = DATA_BUFFER_FACTORY.wrap(new byte[0]);
+                                        sink.success(emptyBuffer);
+                                    } catch (Exception e) {
+                                        sink.error(getRuntimeException(Status.INTERNAL.withCause(e), "Unable to create empty response"));
+                                    }
                                 }
                             });
                         } catch (Exception e) {
@@ -150,6 +177,10 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                     }))
                     .cast(DataBuffer.class)
                     .last());
+        }
+
+        private HttpRuleMethodDescriptor.DynamicMessageBuilder createMessageBuilder(HttpRuleMethodDescriptor methodDescriptor) {
+            return new HttpRuleMethodDescriptor.DynamicMessageBuilder(methodDescriptor.getInputType(), config.jsonParser, OBJECT_MAPPER);
         }
 
         private StatusRuntimeException getRuntimeException(Status status, String message) {
