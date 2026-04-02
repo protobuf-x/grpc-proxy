@@ -234,7 +234,7 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
         }
 
         String method() {
-            return request.getMethodValue();
+            return request.getMethod().name();
         }
 
         String path() {

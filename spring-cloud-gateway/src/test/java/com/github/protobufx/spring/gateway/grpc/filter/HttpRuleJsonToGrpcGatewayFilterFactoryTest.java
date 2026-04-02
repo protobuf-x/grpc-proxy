@@ -50,11 +50,12 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
     @Test
     @DisplayName("Mapping success - default mapping + metadata")
     void testMappingDefault() {
-        MockServerWebExchange exchange = ObjectMother.createRequestExchange(POST, "/example.echo.v1.EchoService/CreateSound",
-                "{ \"sound\": { \"soundId\": \"123\", \"type\": \"SONG\", \"waves\": [{\"waveId\": 10}] } }");
+        MockServerHttpRequest request = MockServerHttpRequest.method(POST, "http://localhost:8080/example.echo.v1.EchoService/CreateSound")
+                .header("x-user-id", "user-123")
+                .header("x-api-key", "my-password")
+                .body("{ \"sound\": { \"soundId\": \"123\", \"type\": \"SONG\", \"waves\": [{\"waveId\": 10}] } }");
+        MockServerWebExchange exchange = ObjectMother.createExchangeFromRequest(request);
         String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SONG\"\n}";
-        exchange.getRequest().mutate().header("x-user-id", "user-123");
-        exchange.getRequest().mutate().header("x-api-key", "my-password");
         MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
         GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
@@ -221,6 +222,11 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
             String host = "http://localhost:8080";
             MockServerHttpRequest.BodyBuilder requestBuilder = MockServerHttpRequest.method(method, host + path);
             MockServerHttpRequest request = body.length > 0 ? requestBuilder.body(body[0]) : requestBuilder.build();
+            return createExchangeFromRequest(request);
+        }
+
+        static MockServerWebExchange createExchangeFromRequest(MockServerHttpRequest request) {
+            String host = "http://localhost:8080";
             MockServerWebExchange exchange = MockServerWebExchange.from(request);
             Route route = Route.async()
                     .id("r1")
@@ -242,7 +248,7 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
 
         static MockChannel<DynamicMessage> createResponseChannel(MockServerWebExchange exchange, String responseBody) {
             org.springframework.http.server.reactive.ServerHttpRequest request = exchange.getRequest();
-            HttpRuleMethodDescriptor methodDescriptor = index.get(request.getMethodValue(), request.getPath().value());
+            HttpRuleMethodDescriptor methodDescriptor = index.get(request.getMethod().name(), request.getPath().value());
             if (methodDescriptor == null) {
                 return new MockChannel<>(DynamicMessage.getDefaultInstance(Empty.getDescriptor()));
             }
