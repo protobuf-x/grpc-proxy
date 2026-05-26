@@ -100,7 +100,7 @@ public class HttpRuleMethodDescriptor {
         return methodDescriptor.getOutputType();
     }
 
-    Descriptors.MethodDescriptor getMethodDescriptor() {
+    public Descriptors.MethodDescriptor getMethodDescriptor() {
         return methodDescriptor;
     }
 
