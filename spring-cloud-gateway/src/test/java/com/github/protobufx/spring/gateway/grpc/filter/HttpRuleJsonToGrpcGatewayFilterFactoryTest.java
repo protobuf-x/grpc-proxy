@@ -19,8 +19,11 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import io.netty.buffer.PooledByteBufAllocator;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import org.springframework.core.io.buffer.NettyDataBuffer;
+import org.springframework.core.io.buffer.NettyDataBufferFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -33,7 +36,6 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.http.HttpMethod.*;
 
 class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
@@ -262,22 +264,84 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
     }
 
     @Test
-    @DisplayName("The backend is never called twice when each body fragment happens to be a valid JSON document")
-    void testSplitBodyDoesNotCallBackendTwice() {
-        // Parsing each DataBuffer on its own used to emit one gRPC call per fragment, so a body split
+    @DisplayName("Mapping success - request body split into two DataBuffers at a field boundary (body: \"sound\")")
+    void testMappingSplitBodyNamedBodyField() {
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(PATCH, "/sounds/123",
+                "{\"sound\": {\"waves\": [{\"wave_id\": \"4",
+                "56\", \"value\": \"v1\"}]}}");
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        assertEquals("example.echo.v1.EchoService/UpdateSound", channel.requestMethodName());
+        assertEquals("sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"456\"\n    value: \"v1\"\n  }\n}\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
+        assertEquals(1, channel.callCount);
+    }
+
+    @Test
+    @DisplayName("The backend is called exactly once when each body fragment is a valid JSON document")
+    void testSplitBodyCallsBackendOnce() {
+        // Parsing each DataBuffer on its own emitted one gRPC call per fragment, so a body split
         // between two independently valid JSON documents reached the backend twice.
+        // JsonFormat.Parser reads the first document of the joined body and ignores the trailing one.
         MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds",
                 "{\"sound\":{\"soundId\":\"123\"}}",
                 "{\"sound\":{\"soundId\":\"456\"}}");
-        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange,
-                "{\n  \"soundId\": \"123\",\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}");
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
         GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
 
-        // The joined body may or may not be accepted as JSON; what matters is that the request is
-        // never dispatched more than once.
-        filter.filter(exchange, chain).onErrorComplete().block();
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
 
-        assertTrue(channel.callCount <= 1, "backend was called " + channel.callCount + " times");
+        assertEquals(1, channel.callCount);
+        assertEquals("sound {\n  sound_id: \"123\"\n}\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
+    }
+
+    @Test
+    @DisplayName("Every request body DataBuffer is released after a successful mapping")
+    void testSplitBodyBuffersReleasedOnSuccess() {
+        List<NettyDataBuffer> buffers = ObjectMother.createNettyBuffers(
+                "{ \"sound\": { \"soundId\": \"123\", \"wa",
+                "ves\": [{\"waveId\": 10}] } }");
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds", buffers);
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange,
+                "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}");
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        assertEquals(1, channel.callCount);
+        for (NettyDataBuffer buffer : buffers) {
+            assertEquals(0, buffer.getNativeBuffer().refCnt());
+        }
+    }
+
+    @Test
+    @DisplayName("Every request body DataBuffer is released when the body is not valid JSON")
+    void testSplitBodyBuffersReleasedOnParseError() {
+        List<NettyDataBuffer> buffers = ObjectMother.createNettyBuffers(
+                "{ \"sound\": { \"soundId\": ",
+                "\"123\", \"waves\": [{");
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds", buffers);
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, "{}");
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .expectErrorMatches(e -> e instanceof StatusRuntimeException
+                        && ((StatusRuntimeException) e).getStatus().getCode() == Status.Code.INVALID_ARGUMENT)
+                .verify();
+
+        assertEquals(0, channel.callCount);
+        for (NettyDataBuffer buffer : buffers) {
+            assertEquals(0, buffer.getNativeBuffer().refCnt());
+        }
     }
 
     @Test
@@ -311,9 +375,24 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
                     .map(fragment -> bufferFactory.wrap(fragment.getBytes(StandardCharsets.UTF_8)))
                     .map(DataBuffer.class::cast)
                     .toList();
+            return createSplitBodyRequestExchange(method, path, buffers);
+        }
+
+        static MockServerWebExchange createSplitBodyRequestExchange(HttpMethod method, String path, List<? extends DataBuffer> buffers) {
             MockServerHttpRequest request = MockServerHttpRequest.method(method, "http://localhost:8080" + path)
                     .body(Flux.fromIterable(buffers));
             return createExchangeFromRequest(request);
+        }
+
+        /**
+         * Reference-counted buffers, so that a test can assert they were released.
+         * DefaultDataBuffer is not reference-counted and release() is a no-op on it.
+         */
+        static List<NettyDataBuffer> createNettyBuffers(String... bodyFragments) {
+            NettyDataBufferFactory bufferFactory = new NettyDataBufferFactory(PooledByteBufAllocator.DEFAULT);
+            return Arrays.stream(bodyFragments)
+                    .map(fragment -> (NettyDataBuffer) bufferFactory.wrap(fragment.getBytes(StandardCharsets.UTF_8)))
+                    .toList();
         }
 
         static MockServerWebExchange createExchangeFromRequest(MockServerHttpRequest request) {

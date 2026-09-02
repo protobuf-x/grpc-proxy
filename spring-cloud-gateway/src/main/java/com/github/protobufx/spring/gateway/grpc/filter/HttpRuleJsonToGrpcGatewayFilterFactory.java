@@ -105,7 +105,9 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                     .<HttpRuleMethodDescriptor.DynamicMessageBuilder>handle((dataBuffer, sink) -> {
                         try {
                             if (dataBuffer.readableByteCount() == 0) {
-                                // No body: fall through to defaultIfEmpty below.
+                                // A request without a body never reaches this point: join() returns an
+                                // empty Mono for it. This branch handles a body made of zero-length
+                                // buffers only. Complete without a value so that defaultIfEmpty applies.
                                 sink.complete();
                                 return;
                             }
