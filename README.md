@@ -108,6 +108,17 @@ public class ExampleGateway {
 }
 ```
 
+#### Limiting the buffered request body size
+
+The whole request body is buffered before it is converted to a gRPC message. By default no limit is
+applied. `maxRequestBodySize` caps the number of buffered bytes; a request exceeding it fails with
+`RESOURCE_EXHAUSTED`.
+
+```java
+HttpRuleJsonToGrpcGatewayFilterFactory.Config config = new HttpRuleJsonToGrpcGatewayFilterFactory.Config();
+config.setMaxRequestBodySize(1024 * 1024); // 1 MiB
+```
+
 For more detailed configuration examples, please refer to the examples directory.
 
 ## License

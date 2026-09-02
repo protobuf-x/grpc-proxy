@@ -21,6 +21,7 @@ import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFac
 import org.springframework.cloud.gateway.route.Route;
 import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.core.io.buffer.NettyDataBufferFactory;
 import org.springframework.http.HttpHeaders;
@@ -97,10 +98,17 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
             // Prepare Builder instance in advance
             HttpRuleMethodDescriptor.DynamicMessageBuilder defaultBuilder = createMessageBuilder(methodDescriptor);
             
-            return getDelegate().writeWith(exchangeRequest.body()
-                    .filter(dataBuffer -> dataBuffer.capacity() != 0)
+            // The request body can be delivered as several DataBuffers (chunked transfer, or simply a
+            // body that is split across TCP segments). A single DataBuffer is therefore not guaranteed
+            // to be a complete JSON document, so join them into one buffer before parsing.
+            return getDelegate().writeWith(joinRequestBody(exchangeRequest)
                     .<HttpRuleMethodDescriptor.DynamicMessageBuilder>handle((dataBuffer, sink) -> {
                         try {
+                            if (dataBuffer.readableByteCount() == 0) {
+                                // No body: fall through to defaultIfEmpty below.
+                                sink.complete();
+                                return;
+                            }
                             HttpRuleMethodDescriptor.DynamicMessageBuilder builder = createMessageBuilder(methodDescriptor);
                             String bodyFiledName = methodDescriptor.getBodyFiledName();
                             builder.setFields(bodyFiledName, dataBuffer);
@@ -109,12 +117,10 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                             sink.error(getRuntimeException(Status.INVALID_ARGUMENT.withCause(e), "Unable to parse request body"));
                         } finally {
                             // Ensure DataBuffer is always released to prevent memory leaks
-                            if (dataBuffer != null && dataBuffer.capacity() > 0) {
-                                try {
-                                    DataBufferUtils.release(dataBuffer);
-                                } catch (Exception e) {
-                                    log.warn("Failed to release DataBuffer: {}", e.getMessage(), e);
-                                }
+                            try {
+                                DataBufferUtils.release(dataBuffer);
+                            } catch (Exception e) {
+                                log.warn("Failed to release DataBuffer: {}", e.getMessage(), e);
                             }
                         }
                     })
@@ -175,8 +181,22 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
                             sink.error(getRuntimeException(Status.INTERNAL.withCause(e), "Unable to process request"));
                         }
                     }))
-                    .cast(DataBuffer.class)
-                    .last());
+                    .cast(DataBuffer.class));
+        }
+
+        /**
+         * Joins every DataBuffer of the request body into a single buffer.
+         * Returns an empty Mono when the request has no body at all.
+         */
+        private Mono<DataBuffer> joinRequestBody(ExchangeRequest exchangeRequest) {
+            int maxRequestBodySize = config.getMaxRequestBodySize();
+            Flux<DataBuffer> body = exchangeRequest.body();
+            Mono<DataBuffer> joined = maxRequestBodySize > 0
+                    ? DataBufferUtils.join(body, maxRequestBodySize)
+                    : DataBufferUtils.join(body);
+            return joined.onErrorMap(DataBufferLimitException.class,
+                    e -> getRuntimeException(Status.RESOURCE_EXHAUSTED.withCause(e),
+                            String.format("Request body exceeds the configured limit of %d bytes", maxRequestBodySize)));
         }
 
         private HttpRuleMethodDescriptor.DynamicMessageBuilder createMessageBuilder(HttpRuleMethodDescriptor methodDescriptor) {
@@ -217,11 +237,18 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
         List<String> mappingAllowedHeaders;
         JsonFormat.Parser jsonParser;
         JsonFormat.Printer jsonPrinter;
+        /**
+         * Maximum number of bytes buffered from the request body.
+         * A value of {@code -1} (the default) means no limit is applied.
+         * When exceeded, the request fails with {@link Status#RESOURCE_EXHAUSTED}.
+         */
+        int maxRequestBodySize;
 
         public Config() {
             mappingAllowedHeaders = Collections.emptyList();
             jsonParser = JsonFormat.parser().ignoringUnknownFields();
             jsonPrinter = JsonFormat.printer().includingDefaultValueFields();
+            maxRequestBodySize = -1;
         }
     }
 

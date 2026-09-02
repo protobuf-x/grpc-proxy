@@ -19,14 +19,21 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.http.HttpMethod.*;
 
 class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
@@ -217,11 +224,95 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
                 .verify();
     }
 
+    @Test
+    @DisplayName("Mapping success - request body split into two DataBuffers mid-JSON")
+    void testMappingSplitBody() {
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds",
+                "{ \"sound\": { \"soundId\": \"123\", \"wa",
+                "ves\": [{\"waveId\": 10}] } }");
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        assertEquals("example.echo.v1.EchoService/CreateSound", channel.requestMethodName());
+        assertEquals("sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"10\"\n  }\n}\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
+        assertEquals(1, channel.callCount);
+    }
+
+    @Test
+    @DisplayName("Mapping success - request body split into three DataBuffers")
+    void testMappingSplitBodyIntoThreeFragments() {
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds",
+                "{ \"sound\": { \"soundId\"",
+                ": \"123\", \"waves\": [{\"wa",
+                "veId\": 10}] } }");
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        assertEquals("sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"10\"\n  }\n}\n", channel.requestMessage());
+        assertEquals(1, channel.callCount);
+    }
+
+    @Test
+    @DisplayName("The backend is never called twice when each body fragment happens to be a valid JSON document")
+    void testSplitBodyDoesNotCallBackendTwice() {
+        // Parsing each DataBuffer on its own used to emit one gRPC call per fragment, so a body split
+        // between two independently valid JSON documents reached the backend twice.
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds",
+                "{\"sound\":{\"soundId\":\"123\"}}",
+                "{\"sound\":{\"soundId\":\"456\"}}");
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange,
+                "{\n  \"soundId\": \"123\",\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}");
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        // The joined body may or may not be accepted as JSON; what matters is that the request is
+        // never dispatched more than once.
+        filter.filter(exchange, chain).onErrorComplete().block();
+
+        assertTrue(channel.callCount <= 1, "backend was called " + channel.callCount + " times");
+    }
+
+    @Test
+    @DisplayName("Mapping fail - request body larger than maxRequestBodySize")
+    void testMappingBodyExceedsLimit() {
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds",
+                "{ \"sound\": { \"soundId\": \"123\", \"wa",
+                "ves\": [{\"waveId\": 10}] } }");
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, "{}");
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel, 8);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .expectErrorMatches(e -> e instanceof StatusRuntimeException
+                        && ((StatusRuntimeException) e).getStatus().getCode() == Status.Code.RESOURCE_EXHAUSTED)
+                .verify();
+
+        assertEquals(0, channel.callCount);
+    }
+
     static class ObjectMother {
         static MockServerWebExchange createRequestExchange(HttpMethod method, String path, String... body) {
             String host = "http://localhost:8080";
             MockServerHttpRequest.BodyBuilder requestBuilder = MockServerHttpRequest.method(method, host + path);
             MockServerHttpRequest request = body.length > 0 ? requestBuilder.body(body[0]) : requestBuilder.build();
+            return createExchangeFromRequest(request);
+        }
+
+        static MockServerWebExchange createSplitBodyRequestExchange(HttpMethod method, String path, String... bodyFragments) {
+            DefaultDataBufferFactory bufferFactory = new DefaultDataBufferFactory();
+            List<DataBuffer> buffers = Arrays.stream(bodyFragments)
+                    .map(fragment -> bufferFactory.wrap(fragment.getBytes(StandardCharsets.UTF_8)))
+                    .map(DataBuffer.class::cast)
+                    .toList();
+            MockServerHttpRequest request = MockServerHttpRequest.method(method, "http://localhost:8080" + path)
+                    .body(Flux.fromIterable(buffers));
             return createExchangeFromRequest(request);
         }
 
@@ -238,8 +329,13 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         }
 
         static GatewayFilter createHttpRuleJsonToGrpcFilter(Channel channel) {
+            return createHttpRuleJsonToGrpcFilter(channel, -1);
+        }
+
+        static GatewayFilter createHttpRuleJsonToGrpcFilter(Channel channel, int maxRequestBodySize) {
             HttpRuleJsonToGrpcGatewayFilterFactory.Config config = new HttpRuleJsonToGrpcGatewayFilterFactory.Config();
             config.setMappingAllowedHeaders(Collections.singletonList("x-api-key"));
+            config.setMaxRequestBodySize(maxRequestBodySize);
             return new HttpRuleJsonToGrpcGatewayFilterFactory(
                     target -> channel,
                     (uri, method, path) -> Optional.ofNullable(index.get(method, path))
@@ -307,6 +403,7 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         DynamicMessage request;
         Metadata requestHeaders;
         RES response;
+        int callCount;
 
         public MockChannel(RES response) {
             this.response = response;
@@ -315,6 +412,7 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         @Override
         public <RequestT, ResponseT> ClientCall<RequestT, ResponseT> newCall(MethodDescriptor<RequestT, ResponseT> methodDescriptor, CallOptions callOptions) {
             requestMethodDescriptor = methodDescriptor;
+            callCount++;
             return new ClientCall<RequestT, ResponseT>() {
                 ClientCall.Listener<ResponseT> listener;
 
