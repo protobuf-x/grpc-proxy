@@ -19,11 +19,20 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import io.netty.buffer.PooledByteBufAllocator;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import org.springframework.core.io.buffer.NettyDataBuffer;
+import org.springframework.core.io.buffer.NettyDataBufferFactory;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -217,12 +226,173 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
                 .verify();
     }
 
+    @Test
+    @DisplayName("Mapping success - request body split into two DataBuffers mid-JSON")
+    void testMappingSplitBody() {
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds",
+                "{ \"sound\": { \"soundId\": \"123\", \"wa",
+                "ves\": [{\"waveId\": 10}] } }");
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        assertEquals("example.echo.v1.EchoService/CreateSound", channel.requestMethodName());
+        assertEquals("sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"10\"\n  }\n}\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
+        assertEquals(1, channel.callCount);
+    }
+
+    @Test
+    @DisplayName("Mapping success - request body split into three DataBuffers")
+    void testMappingSplitBodyIntoThreeFragments() {
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds",
+                "{ \"sound\": { \"soundId\"",
+                ": \"123\", \"waves\": [{\"wa",
+                "veId\": 10}] } }");
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        assertEquals("sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"10\"\n  }\n}\n", channel.requestMessage());
+        assertEquals(1, channel.callCount);
+    }
+
+    @Test
+    @DisplayName("Mapping success - request body split into two DataBuffers at a field boundary (body: \"sound\")")
+    void testMappingSplitBodyNamedBodyField() {
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(PATCH, "/sounds/123",
+                "{\"sound\": {\"waves\": [{\"wave_id\": \"4",
+                "56\", \"value\": \"v1\"}]}}");
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        assertEquals("example.echo.v1.EchoService/UpdateSound", channel.requestMethodName());
+        assertEquals("sound {\n  sound_id: \"123\"\n  waves {\n    wave_id: \"456\"\n    value: \"v1\"\n  }\n}\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
+        assertEquals(1, channel.callCount);
+    }
+
+    @Test
+    @DisplayName("The backend is called exactly once when each body fragment is a valid JSON document")
+    void testSplitBodyCallsBackendOnce() {
+        // Parsing each DataBuffer on its own emitted one gRPC call per fragment, so a body split
+        // between two independently valid JSON documents reached the backend twice.
+        // JsonFormat.Parser reads the first document of the joined body and ignores the trailing one.
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds",
+                "{\"sound\":{\"soundId\":\"123\"}}",
+                "{\"sound\":{\"soundId\":\"456\"}}");
+        String responseBody = "{\n  \"soundId\": \"123\",\n  \"waves\": [],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}";
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, responseBody);
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        assertEquals(1, channel.callCount);
+        assertEquals("sound {\n  sound_id: \"123\"\n}\n", channel.requestMessage());
+        assertEquals(responseBody, exchange.getResponse().getBodyAsString().block());
+    }
+
+    @Test
+    @DisplayName("Every request body DataBuffer is released after a successful mapping")
+    void testSplitBodyBuffersReleasedOnSuccess() {
+        List<NettyDataBuffer> buffers = ObjectMother.createNettyBuffers(
+                "{ \"sound\": { \"soundId\": \"123\", \"wa",
+                "ves\": [{\"waveId\": 10}] } }");
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds", buffers);
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange,
+                "{\n  \"soundId\": \"123\",\n  \"waves\": [{\n    \"waveId\": \"10\",\n    \"value\": \"\"\n  }],\n  \"type\": \"SOUND_TYPE_UNSPECIFIED\"\n}");
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        assertEquals(1, channel.callCount);
+        for (NettyDataBuffer buffer : buffers) {
+            assertEquals(0, buffer.getNativeBuffer().refCnt());
+        }
+    }
+
+    @Test
+    @DisplayName("Every request body DataBuffer is released when the body is not valid JSON")
+    void testSplitBodyBuffersReleasedOnParseError() {
+        List<NettyDataBuffer> buffers = ObjectMother.createNettyBuffers(
+                "{ \"sound\": { \"soundId\": ",
+                "\"123\", \"waves\": [{");
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds", buffers);
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, "{}");
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .expectErrorMatches(e -> e instanceof StatusRuntimeException
+                        && ((StatusRuntimeException) e).getStatus().getCode() == Status.Code.INVALID_ARGUMENT)
+                .verify();
+
+        assertEquals(0, channel.callCount);
+        for (NettyDataBuffer buffer : buffers) {
+            assertEquals(0, buffer.getNativeBuffer().refCnt());
+        }
+    }
+
+    @Test
+    @DisplayName("Mapping fail - request body larger than maxRequestBodySize")
+    void testMappingBodyExceedsLimit() {
+        MockServerWebExchange exchange = ObjectMother.createSplitBodyRequestExchange(POST, "/sounds",
+                "{ \"sound\": { \"soundId\": \"123\", \"wa",
+                "ves\": [{\"waveId\": 10}] } }");
+        MockChannel<DynamicMessage> channel = ObjectMother.createResponseChannel(exchange, "{}");
+        GatewayFilter filter = ObjectMother.createHttpRuleJsonToGrpcFilter(channel, 8);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .expectErrorMatches(e -> e instanceof StatusRuntimeException
+                        && ((StatusRuntimeException) e).getStatus().getCode() == Status.Code.RESOURCE_EXHAUSTED)
+                .verify();
+
+        assertEquals(0, channel.callCount);
+    }
+
     static class ObjectMother {
         static MockServerWebExchange createRequestExchange(HttpMethod method, String path, String... body) {
             String host = "http://localhost:8080";
             MockServerHttpRequest.BodyBuilder requestBuilder = MockServerHttpRequest.method(method, host + path);
             MockServerHttpRequest request = body.length > 0 ? requestBuilder.body(body[0]) : requestBuilder.build();
             return createExchangeFromRequest(request);
+        }
+
+        static MockServerWebExchange createSplitBodyRequestExchange(HttpMethod method, String path, String... bodyFragments) {
+            DefaultDataBufferFactory bufferFactory = new DefaultDataBufferFactory();
+            List<DataBuffer> buffers = Arrays.stream(bodyFragments)
+                    .map(fragment -> bufferFactory.wrap(fragment.getBytes(StandardCharsets.UTF_8)))
+                    .map(DataBuffer.class::cast)
+                    .toList();
+            return createSplitBodyRequestExchange(method, path, buffers);
+        }
+
+        static MockServerWebExchange createSplitBodyRequestExchange(HttpMethod method, String path, List<? extends DataBuffer> buffers) {
+            MockServerHttpRequest request = MockServerHttpRequest.method(method, "http://localhost:8080" + path)
+                    .body(Flux.fromIterable(buffers));
+            return createExchangeFromRequest(request);
+        }
+
+        /**
+         * Reference-counted buffers, so that a test can assert they were released.
+         * DefaultDataBuffer is not reference-counted and release() is a no-op on it.
+         */
+        static List<NettyDataBuffer> createNettyBuffers(String... bodyFragments) {
+            NettyDataBufferFactory bufferFactory = new NettyDataBufferFactory(PooledByteBufAllocator.DEFAULT);
+            return Arrays.stream(bodyFragments)
+                    .map(fragment -> (NettyDataBuffer) bufferFactory.wrap(fragment.getBytes(StandardCharsets.UTF_8)))
+                    .toList();
         }
 
         static MockServerWebExchange createExchangeFromRequest(MockServerHttpRequest request) {
@@ -238,8 +408,13 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         }
 
         static GatewayFilter createHttpRuleJsonToGrpcFilter(Channel channel) {
+            return createHttpRuleJsonToGrpcFilter(channel, -1);
+        }
+
+        static GatewayFilter createHttpRuleJsonToGrpcFilter(Channel channel, int maxRequestBodySize) {
             HttpRuleJsonToGrpcGatewayFilterFactory.Config config = new HttpRuleJsonToGrpcGatewayFilterFactory.Config();
             config.setMappingAllowedHeaders(Collections.singletonList("x-api-key"));
+            config.setMaxRequestBodySize(maxRequestBodySize);
             return new HttpRuleJsonToGrpcGatewayFilterFactory(
                     target -> channel,
                     (uri, method, path) -> Optional.ofNullable(index.get(method, path))
@@ -307,6 +482,7 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         DynamicMessage request;
         Metadata requestHeaders;
         RES response;
+        int callCount;
 
         public MockChannel(RES response) {
             this.response = response;
@@ -315,6 +491,7 @@ class HttpRuleJsonToGrpcGatewayFilterFactoryTest {
         @Override
         public <RequestT, ResponseT> ClientCall<RequestT, ResponseT> newCall(MethodDescriptor<RequestT, ResponseT> methodDescriptor, CallOptions callOptions) {
             requestMethodDescriptor = methodDescriptor;
+            callCount++;
             return new ClientCall<RequestT, ResponseT>() {
                 ClientCall.Listener<ResponseT> listener;
 
