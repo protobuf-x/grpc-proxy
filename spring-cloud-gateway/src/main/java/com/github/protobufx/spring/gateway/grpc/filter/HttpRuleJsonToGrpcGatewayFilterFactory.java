@@ -1,6 +1,6 @@
 package com.github.protobufx.spring.gateway.grpc.filter;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.google.protobuf.Descriptors;
 import com.google.protobuf.DynamicMessage;
 import com.google.protobuf.ExtensionRegistryLite;
@@ -33,7 +33,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import javax.annotation.Nonnull;
+import org.jspecify.annotations.NonNull;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -80,8 +80,8 @@ public class HttpRuleJsonToGrpcGatewayFilterFactory extends AbstractGatewayFilte
         }
 
         @Override
-        @Nonnull
-        public Mono<Void> writeWith(@Nonnull Publisher<? extends DataBuffer> body) {
+        @NonNull
+        public Mono<Void> writeWith(@NonNull Publisher<? extends DataBuffer> body) {
             exchange.getResponse().getHeaders().set(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
             String routingUriAuthority = ((Route) exchange.getAttributes().get(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR))
                     .getUri()

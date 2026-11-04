@@ -1,6 +1,6 @@
 package com.github.protobufx.spring.gateway.grpc.filter;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.google.api.HttpRule;
 import com.google.common.base.Strings;
 import com.google.protobuf.Descriptors;
@@ -19,7 +19,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.util.pattern.PathPattern;
 import org.springframework.web.util.pattern.PathPatternParser;
 
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Arrays;
@@ -182,7 +182,7 @@ public class HttpRuleMethodDescriptor {
                     String messageFiledName = convertCamelToSnake(filedName);
                     Descriptors.FieldDescriptor field = descriptor.findFieldByName(messageFiledName);
                     DynamicMessage.Builder fieldBuilder = DynamicMessage.newBuilder(field.getMessageType());
-                    com.fasterxml.jackson.databind.JsonNode jsonNode = objectMapper.readTree(inputStream);
+                    tools.jackson.databind.JsonNode jsonNode = objectMapper.readTree(inputStream);
                     parser.merge(jsonNode.get(messageFiledName).toString(), fieldBuilder);
                     builder.setField(field, fieldBuilder.build());
                 }

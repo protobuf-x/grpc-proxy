@@ -58,7 +58,9 @@ implementation 'com.github.protobuf-x.grpc-proxy:spring-cloud-gateway:${release-
 - Protocol buffers must be properly configured in your project
 
 ### Requirements for Using Spring Cloud Gateway
-- Spring Cloud Gateway dependencies must be properly configured
+- Spring Boot 4.1.x and Spring Cloud 2025.1.x (Spring Cloud Gateway 5.0, `spring-cloud-starter-gateway-server-webflux`)
+- Java 17 or later
+- Jackson 3 (`tools.jackson`), which Spring Boot 4 uses by default
 - Your application must be configured as a Spring Boot application
 
 ## Configuration
