@@ -3,11 +3,10 @@ package com.example.server;
 import com.example.echo.v1.*;
 import com.github.protobufx.reflection.extension.ReflectionExtensionService;
 import io.grpc.stub.StreamObserver;
-import org.lognet.springboot.grpc.GRpcServerBuilderConfigurer;
-import org.lognet.springboot.grpc.GRpcService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.stereotype.Component;
 
 @SpringBootApplication
 public class ExampleServer {
@@ -16,16 +15,11 @@ public class ExampleServer {
     }
 
     @Bean
-    GRpcServerBuilderConfigurer serverBuilderConfigurer() {
-        return new GRpcServerBuilderConfigurer() {
-            @Override
-            public void configure(io.grpc.ServerBuilder<?> serverBuilder) {
-                serverBuilder.addService(new ReflectionExtensionService());
-            }
-        };
+    ReflectionExtensionService reflectionExtensionService() {
+        return new ReflectionExtensionService();
     }
 
-    @GRpcService
+    @Component
     public static class EchoGrpc extends EchoServiceGrpc.EchoServiceImplBase {
         @Override
         public void createEcho(CreateEchoRequest request, StreamObserver<Echo> responseObserver) {
