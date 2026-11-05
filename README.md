@@ -1,5 +1,7 @@
 # grpc-proxy
 
+[![JitPack](https://jitpack.io/v/protobuf-x/grpc-proxy.svg)](https://jitpack.io/#protobuf-x/grpc-proxy)
+
 A gRPC proxy implementation that allows proxying gRPC requests through HTTP/JSON rules using Spring Cloud Gateway.
 
 ## Overview
@@ -41,6 +43,8 @@ repositories {
     maven { url "https://jitpack.io" }
 }
 ```
+
+Replace `${release-version}` with the version shown in the JitPack badge above.
 
 ### Reflection Extension
 ```groovy
